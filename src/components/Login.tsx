@@ -29,7 +29,7 @@ export function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 overflow-hidden bg-slate-900 relative">
       {/* Background Video */}
-      <video
+      {/* <video
         autoPlay
         loop
         muted
@@ -37,7 +37,7 @@ export function Login() {
         className="absolute inset-0 w-full h-full object-cover"
       >
         <source src={loginBg} type="video/mp4" />
-      </video>
+      </video> */}
 
       {/* Dark Overlay */}
       <div className="absolute inset-0 bg-black/40"></div>
