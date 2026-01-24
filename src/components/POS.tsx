@@ -1,24 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Database } from '../lib/database.types';
-import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, Package } from 'lucide-react';
+import { Search, Barcode, Plus, ShoppingCart, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
 import { Invoice } from './Invoice';
-
-type Product = Database['public']['Tables']['products']['Row'];
-type ProductBatch = Database['public']['Tables']['product_batches']['Row'];
-type Customer = Database['public']['Tables']['customers']['Row'];
-type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
-
-interface CartItem {
-  product: Product;
-  batch: ProductBatch;
-  quantity: number;
-}
-
-interface ProductWithBatches extends Product {
-  batches: ProductBatch[];
-}
+import { ProductGrid } from './pos/ProductGrid';
+import { CartItemsList } from './pos/CartItemsList';
 
 export function POS() {
   const { profile } = useAuth();
@@ -98,7 +85,7 @@ export function POS() {
     try {
       const [productsRes, customersRes, agentsRes] = await Promise.all([
         supabase.from('products').select('*').eq('active', true).order('name'),
-        supabase.from('customers').select('*').eq('active', true).order('name'),
+        supabase.from('customers').select('*').order('name'),
         supabase.from('referral_agents').select('*').eq('active', true).order('name'),
       ]);
 
@@ -130,38 +117,12 @@ export function POS() {
     }
   }
 
-  async function searchProductByBarcode(barcode: string) {
-    try {
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('barcode', barcode)
-        .eq('active', true)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (!product) {
-        alert(`No product found with barcode: ${barcode}`);
-        return;
-      }
-
-      const { data: batches } = await supabase
-        .from('product_batches')
-        .select('*')
-        .eq('product_id', product.id)
-        .gt('current_quantity', 0)
-        .order('received_date');
-
-      const productWithBatches: ProductWithBatches = {
-        ...product,
-        batches: batches || [],
-      };
-
-      handleProductSelect(productWithBatches);
-      setSearchTerm('');
-    } catch (error: any) {
-      alert(`Error searching product: ${error.message}`);
+  function searchProductByBarcode(barcode: string) {
+    const product = products.find((p) => p.barcode === barcode);
+    if (product) {
+      handleProductSelect(product);
+    } else {
+      alert('Product not found with this barcode');
     }
   }
 
@@ -177,15 +138,9 @@ export function POS() {
       setSelectedProduct(product);
       setShowBatchModal(true);
     }
-    setSearchTerm('');
   }
 
-  function addToCart(product: ProductWithBatches, batch: ProductBatch, quantity: number) {
-    if (quantity > batch.current_quantity) {
-      alert(`Only ${batch.current_quantity} units available in this batch`);
-      return;
-    }
-
+  function addToCart(product: ProductWithBatches, batch: any, quantity: number) {
     const existingItemIndex = cart.findIndex(
       (item) => item.product.id === product.id && item.batch.id === batch.id
     );
@@ -195,7 +150,7 @@ export function POS() {
       const newQuantity = newCart[existingItemIndex].quantity + quantity;
 
       if (newQuantity > batch.current_quantity) {
-        alert(`Only ${batch.current_quantity} units available in this batch`);
+        alert(`Only ${batch.current_quantity} units available`);
         return;
       }
 
@@ -348,93 +303,84 @@ export function POS() {
           sale_number: saleNumber,
           customer_id: selectedCustomer?.id || null,
           referral_agent_id: selectedReferralAgent?.id || null,
+          user_id: profile?.id,
           subtotal,
-          tax_amount: taxAmount,
           discount_amount: discountAmount,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
           total_amount: total,
-          paid_amount: actualPaidAmount,
           payment_method: paymentMethod,
+          paid_amount: actualPaidAmount,
           status,
-          cashier_id: profile?.id || null,
         })
         .select()
         .single();
 
       if (saleError) throw saleError;
 
+      const saleItems = cart.map((item) => ({
+        sale_id: saleData.id,
+        product_id: item.product.id,
+        batch_id: item.batch.id,
+        quantity: item.quantity,
+        unit_price: item.batch.selling_price,
+        total_price: item.batch.selling_price * item.quantity,
+      }));
+
+      const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
+
+      if (itemsError) throw itemsError;
+
       for (const item of cart) {
-        const { error: itemError } = await supabase.from('sale_items').insert({
-          sale_id: saleData.id,
-          product_id: item.product.id,
-          batch_id: item.batch.id,
-          quantity: item.quantity,
-          unit_price: item.batch.selling_price,
-          cost_price: item.batch.cost_price,
-          subtotal: item.batch.selling_price * item.quantity,
-        });
-
-        if (itemError) throw itemError;
-
+        const newQuantity = item.batch.current_quantity - item.quantity;
         const { error: batchError } = await supabase
           .from('product_batches')
-          .update({
-            current_quantity: item.batch.current_quantity - item.quantity,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ current_quantity: newQuantity })
           .eq('id', item.batch.id);
 
         if (batchError) throw batchError;
       }
 
-      if (selectedCustomer && paymentMethod === 'credit') {
-        const { error: customerError } = await supabase
+      if (paymentMethod === 'credit' && selectedCustomer) {
+        const { error: creditError } = await supabase
           .from('customers')
-          .update({
-            current_credit: selectedCustomer.current_credit + total,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ current_credit: selectedCustomer.current_credit + total })
           .eq('id', selectedCustomer.id);
 
-        if (customerError) throw customerError;
+        if (creditError) throw creditError;
       }
 
       if (selectedReferralAgent) {
-        const commissionAmount = (total * selectedReferralAgent.commission_rate) / 100;
-
-        const { error: commissionError } = await supabase.from('referral_commissions').insert({
-          sale_id: saleData.id,
+        const commissionAmount = total * (selectedReferralAgent.commission_rate / 100);
+        const { error: commissionError } = await supabase.from('commissions').insert({
           referral_agent_id: selectedReferralAgent.id,
-          commission_rate: selectedReferralAgent.commission_rate,
-          sale_amount: total,
-          commission_amount: commissionAmount,
+          sale_id: saleData.id,
+          amount: commissionAmount,
         });
 
         if (commissionError) throw commissionError;
       }
 
-      const invoice = {
+      setInvoiceData({
         saleNumber,
-        date: new Date().toLocaleString(),
-        customerName: selectedCustomer?.name,
-        customerPhone: selectedCustomer?.phone,
+        date: new Date().toISOString(),
+        customer: selectedCustomer?.name || 'Walk-in Customer',
         items: cart.map((item) => ({
           name: item.product.name,
           quantity: item.quantity,
           unitPrice: item.batch.selling_price,
-          subtotal: item.batch.selling_price * item.quantity,
-          batchNumber: item.batch.batch_number,
+          total: item.batch.selling_price * item.quantity,
         })),
         subtotal,
         discount: discountAmount,
-        tax: taxAmount,
+        taxRate,
+        taxAmount,
         total,
         paidAmount: actualPaidAmount,
         changeAmount,
         paymentMethod,
-        cashierName: profile?.email,
-      };
+      });
 
-      setInvoiceData(invoice);
       setShowInvoice(true);
       clearCart();
       loadData();
@@ -456,7 +402,7 @@ export function POS() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2">
             <Search className="w-5 h-5 text-slate-400" />
             <input
               ref={searchInputRef}
@@ -470,125 +416,16 @@ export function POS() {
             <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'}`} />
           </div>
           {barcodeBuffer && (
-            <div className="mb-2 text-xs text-green-600 font-medium flex items-center gap-1">
+            <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
               <Barcode className="w-3 h-3" />
               Scanning barcode...
-            </div>
-          )}
-
-          {searchTerm && (
-            <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg">
-              {filteredProducts.map((product) => (
-                <button
-                  key={product.id}
-                  onClick={() => handleProductSelect(product)}
-                  className="w-full p-3 hover:bg-slate-50 transition text-left border-b border-slate-100 last:border-b-0"
-                >
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="w-12 h-12 flex-shrink-0">
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="w-full h-full object-cover rounded-lg border border-slate-200"
-                          />
-                        ) : (
-                          <div className="bg-slate-100 rounded-lg w-full h-full flex items-center justify-center">
-                            <Package className="w-5 h-5 text-slate-600" />
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-900">{product.name}</p>
-                        <p className="text-sm text-slate-500">
-                          {product.sku} {product.barcode && `• ${product.barcode}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-slate-900">
-                        {product.batches.length} batch{product.batches.length !== 1 ? 'es' : ''}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Stock: {product.batches.reduce((sum, b) => sum + b.current_quantity, 0)}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-              {filteredProducts.length === 0 && (
-                <div className="p-4 text-center text-slate-500">No products found</div>
-              )}
             </div>
           )}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Cart</h3>
-
-          {cart.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-              <p>Cart is empty</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {cart.map((item, index) => (
-                <div key={index} className="border border-slate-200 rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-2 gap-3">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="w-12 h-12 flex-shrink-0">
-                        {item.product.image_url ? (
-                          <img
-                            src={item.product.image_url}
-                            alt={item.product.name}
-                            className="w-full h-full object-cover rounded-lg border border-slate-200"
-                          />
-                        ) : (
-                          <div className="bg-slate-100 rounded-lg w-full h-full flex items-center justify-center">
-                            <Package className="w-5 h-5 text-slate-600" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-slate-900">{item.product.name}</p>
-                        <p className="text-xs text-slate-500">
-                          Batch: {item.batch.batch_number} • LKR {item.batch.selling_price.toFixed(2)} each
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeFromCart(index)}
-                      className="p-1 hover:bg-red-50 rounded transition"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-600" />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateCartItemQuantity(index, -1)}
-                        className="p-1 bg-slate-100 hover:bg-slate-200 rounded transition"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </button>
-                      <span className="w-12 text-center font-medium">{item.quantity}</span>
-                      <button
-                        onClick={() => updateCartItemQuantity(index, 1)}
-                        className="p-1 bg-slate-100 hover:bg-slate-200 rounded transition"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <p className="font-bold text-slate-900">
-                      LKR {(item.batch.selling_price * item.quantity).toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <h3 className="text-lg font-bold text-slate-900 mb-6">Products</h3>
+          <ProductGrid products={filteredProducts} onAddToCart={handleProductSelect} />
         </div>
       </div>
 
@@ -606,7 +443,7 @@ export function POS() {
                     const customer = customers.find((c) => c.id === e.target.value);
                     setSelectedCustomer(customer || null);
                   }}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
                 >
                   <option value="">Walk-in Customer</option>
                   {customers.map((customer) => (
@@ -637,7 +474,7 @@ export function POS() {
                     const agent = referralAgents.find((a) => a.id === e.target.value);
                     setSelectedReferralAgent(agent || null);
                   }}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
                 >
                   <option value="">None</option>
                   {referralAgents.map((agent) => (
@@ -666,7 +503,7 @@ export function POS() {
                 onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
                 min="0"
                 max={subtotal}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
               />
             </div>
 
@@ -679,7 +516,7 @@ export function POS() {
                 onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
                 min="0"
                 max="100"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
               />
             </div>
 
@@ -688,7 +525,7 @@ export function POS() {
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value as any)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
               >
                 <option value="cash">Cash</option>
                 <option value="card">Card</option>
@@ -706,13 +543,13 @@ export function POS() {
                   value={paidAmount}
                   onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
                   min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
                 />
               </div>
             )}
           </div>
 
-          <div className="border-t border-slate-200 pt-4 mb-6 space-y-2">
+          <div className="border-t border-slate-200 pt-4 mb-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">Subtotal:</span>
               <span className="font-medium text-slate-900">LKR {subtotal.toFixed(2)}</span>
@@ -737,6 +574,27 @@ export function POS() {
             )}
           </div>
 
+          <div className="border-t border-slate-200 pt-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
+              {cart.length > 0 && (
+                <button
+                  onClick={clearCart}
+                  className="text-xs text-red-600 hover:text-red-700"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+            <div className="max-h-64 overflow-y-auto -mx-2 px-2">
+              <CartItemsList
+                items={cart}
+                onUpdateQuantity={updateCartItemQuantity}
+                onRemoveItem={removeFromCart}
+              />
+            </div>
+          </div>
+
           <div className="space-y-2">
             <button
               onClick={completeSale}
@@ -744,13 +602,6 @@ export function POS() {
               className="w-full py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               {processing ? 'Processing...' : 'Complete Sale'}
-            </button>
-            <button
-              onClick={clearCart}
-              disabled={cart.length === 0}
-              className="w-full py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Clear Cart
             </button>
           </div>
         </div>
@@ -760,35 +611,46 @@ export function POS() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
             <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-slate-900">Select Batch - {selectedProduct.name}</h3>
+              <h3 className="text-xl font-bold text-slate-900">Select Batch</h3>
               <button
-                onClick={() => setShowBatchModal(false)}
-                className="p-1 hover:bg-slate-100 rounded transition"
+                onClick={() => {
+                  setShowBatchModal(false);
+                  setSelectedProduct(null);
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-              {selectedProduct.batches.map((batch) => (
-                <button
-                  key={batch.id}
-                  onClick={() => addToCart(selectedProduct, batch, 1)}
-                  className="w-full p-4 border-2 border-slate-200 rounded-lg hover:border-slate-900 hover:bg-slate-50 transition text-left"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-slate-900">Batch: {batch.batch_number}</p>
-                      <p className="text-sm text-slate-600">Received: {batch.received_date}</p>
-                      <p className="text-sm text-slate-600">Available: {batch.current_quantity} units</p>
+            <div className="p-6">
+              <div className="space-y-3">
+                {selectedProduct.batches.map((batch) => (
+                  <div
+                    key={batch.id}
+                    onClick={() => addToCart(selectedProduct, batch, 1)}
+                    className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 cursor-pointer transition"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-medium text-slate-900">Batch: {batch.batch_number}</p>
+                        <p className="text-sm text-slate-500">
+                          Received: {new Date(batch.received_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-slate-900">LKR {batch.selling_price.toFixed(2)}</p>
+                        <p className="text-sm text-slate-500">{batch.current_quantity} available</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-slate-900">LKR {batch.selling_price.toFixed(2)}</p>
-                      <p className="text-xs text-slate-500">per unit</p>
-                    </div>
+                    {batch.expiry_date && (
+                      <p className="text-sm text-slate-500">
+                        Expires: {new Date(batch.expiry_date).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
-                </button>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -797,15 +659,21 @@ export function POS() {
       {showCustomerModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">Add New Customer</h3>
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-slate-900">Add Customer</h3>
+              <button
+                onClick={() => setShowCustomerModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <form onSubmit={handleCustomerSubmit} className="p-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Customer Name <span className="text-red-500">*</span>
+                    Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -813,70 +681,55 @@ export function POS() {
                     onChange={(e) => setCustomerFormData({ ...customerFormData, name: e.target.value })}
                     required
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter customer name"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Phone
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
                   <input
                     type="tel"
                     value={customerFormData.phone}
                     onChange={(e) => setCustomerFormData({ ...customerFormData, phone: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter phone number"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                   <input
                     type="email"
                     value={customerFormData.email}
                     onChange={(e) => setCustomerFormData({ ...customerFormData, email: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter email address"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Address
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
                   <textarea
                     value={customerFormData.address}
                     onChange={(e) => setCustomerFormData({ ...customerFormData, address: e.target.value })}
-                    rows={2}
+                    rows={3}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter address"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Credit Limit ($)
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Credit Limit</label>
                   <input
                     type="number"
                     step="0.01"
                     value={customerFormData.credit_limit}
-                    onChange={(e) => setCustomerFormData({ ...customerFormData, credit_limit: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) =>
+                      setCustomerFormData({ ...customerFormData, credit_limit: parseFloat(e.target.value) || 0 })
+                    }
                     min="0"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="e.g., 1000.00"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-6">
+              <div className="flex justify-end gap-3 mt-6">
                 <button
                   type="button"
                   onClick={() => setShowCustomerModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition"
                 >
                   Cancel
                 </button>
@@ -895,15 +748,21 @@ export function POS() {
       {showAgentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">Add New Referral Agent</h3>
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-slate-900">Add Referral Agent</h3>
+              <button
+                onClick={() => setShowAgentModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <form onSubmit={handleAgentSubmit} className="p-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Agent Name <span className="text-red-500">*</span>
+                    Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -911,49 +770,35 @@ export function POS() {
                     onChange={(e) => setAgentFormData({ ...agentFormData, name: e.target.value })}
                     required
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter agent name"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Phone
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
                   <input
                     type="tel"
                     value={agentFormData.phone}
                     onChange={(e) => setAgentFormData({ ...agentFormData, phone: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter phone number"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                   <input
                     type="email"
                     value={agentFormData.email}
                     onChange={(e) => setAgentFormData({ ...agentFormData, email: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter email address"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Address
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
                   <textarea
                     value={agentFormData.address}
                     onChange={(e) => setAgentFormData({ ...agentFormData, address: e.target.value })}
-                    rows={2}
+                    rows={3}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="Enter address"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Commission Rate (%) <span className="text-red-500">*</span>
@@ -962,21 +807,22 @@ export function POS() {
                     type="number"
                     step="0.01"
                     value={agentFormData.commission_rate}
-                    onChange={(e) => setAgentFormData({ ...agentFormData, commission_rate: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) =>
+                      setAgentFormData({ ...agentFormData, commission_rate: parseFloat(e.target.value) || 0 })
+                    }
+                    required
                     min="0"
                     max="100"
-                    required
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                    placeholder="e.g., 5.00"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-6">
+              <div className="flex justify-end gap-3 mt-6">
                 <button
                   type="button"
                   onClick={() => setShowAgentModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition"
                 >
                   Cancel
                 </button>
@@ -993,7 +839,7 @@ export function POS() {
       )}
 
       {showInvoice && invoiceData && (
-        <Invoice invoiceData={invoiceData} onClose={() => setShowInvoice(false)} />
+        <Invoice data={invoiceData} onClose={() => setShowInvoice(false)} />
       )}
     </div>
   );
