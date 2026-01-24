@@ -1,0 +1,273 @@
+import { X, Printer, Share2 } from 'lucide-react';
+
+interface InvoiceItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  batchNumber: string;
+}
+
+interface InvoiceData {
+  saleNumber: string;
+  date: string;
+  customerName?: string;
+  customerPhone?: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  paidAmount: number;
+  changeAmount: number;
+  paymentMethod: string;
+  cashierName?: string;
+}
+
+interface InvoiceProps {
+  invoiceData: InvoiceData;
+  onClose: () => void;
+}
+
+export function Invoice({ invoiceData, onClose }: InvoiceProps) {
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleWhatsAppShare = () => {
+    let message = `*INVOICE - ${invoiceData.saleNumber}*\n\n`;
+    message += `Date: ${invoiceData.date}\n`;
+
+    if (invoiceData.customerName) {
+      message += `Customer: ${invoiceData.customerName}\n`;
+      if (invoiceData.customerPhone) {
+        message += `Phone: ${invoiceData.customerPhone}\n`;
+      }
+    }
+
+    message += `\n*ITEMS:*\n`;
+    message += `${'─'.repeat(40)}\n`;
+
+    invoiceData.items.forEach((item, index) => {
+      message += `${index + 1}. ${item.name}\n`;
+      message += `   Qty: ${item.quantity} × LKR ${item.unitPrice.toFixed(2)}\n`;
+      message += `   Subtotal: LKR ${item.subtotal.toFixed(2)}\n`;
+      if (item.batchNumber) {
+        message += `   Batch: ${item.batchNumber}\n`;
+      }
+      message += `\n`;
+    });
+
+    message += `${'─'.repeat(40)}\n`;
+    message += `Subtotal: LKR ${invoiceData.subtotal.toFixed(2)}\n`;
+
+    if (invoiceData.discount > 0) {
+      message += `Discount: -LKR ${invoiceData.discount.toFixed(2)}\n`;
+    }
+
+    if (invoiceData.tax > 0) {
+      message += `Tax: LKR ${invoiceData.tax.toFixed(2)}\n`;
+    }
+
+    message += `\n*TOTAL: LKR ${invoiceData.total.toFixed(2)}*\n`;
+
+    if (invoiceData.paymentMethod !== 'credit') {
+      message += `Paid: LKR ${invoiceData.paidAmount.toFixed(2)}\n`;
+      if (invoiceData.changeAmount > 0) {
+        message += `Change: LKR ${invoiceData.changeAmount.toFixed(2)}\n`;
+      }
+    }
+
+    message += `\nPayment: ${invoiceData.paymentMethod.toUpperCase()}\n`;
+
+    if (invoiceData.cashierName) {
+      message += `Cashier: ${invoiceData.cashierName}\n`;
+    }
+
+    message += `\nThank you for your business!`;
+
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 print:hidden">
+        <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-900">Invoice</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleWhatsAppShare}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+              >
+                <Share2 className="w-4 h-4" />
+                WhatsApp
+              </button>
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition"
+              >
+                <Printer className="w-4 h-4" />
+                Print
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-slate-100 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6" id="invoice-content">
+            <div className="invoice-print">
+              <div className="text-center mb-6">
+                <h1 className="text-2xl font-bold text-slate-900 mb-1">Vehicle Parts Store</h1>
+                <p className="text-sm text-slate-600">Sales Invoice</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-slate-200">
+                <div>
+                  <p className="text-sm font-medium text-slate-500 mb-1">Invoice Number</p>
+                  <p className="font-bold text-slate-900">{invoiceData.saleNumber}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-500 mb-1">Date</p>
+                  <p className="font-bold text-slate-900">{invoiceData.date}</p>
+                </div>
+                {invoiceData.customerName && (
+                  <div>
+                    <p className="text-sm font-medium text-slate-500 mb-1">Customer</p>
+                    <p className="font-bold text-slate-900">{invoiceData.customerName}</p>
+                    {invoiceData.customerPhone && (
+                      <p className="text-sm text-slate-600">{invoiceData.customerPhone}</p>
+                    )}
+                  </div>
+                )}
+                {invoiceData.cashierName && (
+                  <div>
+                    <p className="text-sm font-medium text-slate-500 mb-1">Cashier</p>
+                    <p className="font-bold text-slate-900">{invoiceData.cashierName}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-6">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-slate-300">
+                      <th className="text-left py-2 text-sm font-bold text-slate-700">#</th>
+                      <th className="text-left py-2 text-sm font-bold text-slate-700">Item</th>
+                      <th className="text-center py-2 text-sm font-bold text-slate-700">Qty</th>
+                      <th className="text-right py-2 text-sm font-bold text-slate-700">Price</th>
+                      <th className="text-right py-2 text-sm font-bold text-slate-700">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceData.items.map((item, index) => (
+                      <tr key={index} className="border-b border-slate-200">
+                        <td className="py-3 text-sm text-slate-600">{index + 1}</td>
+                        <td className="py-3">
+                          <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                          {item.batchNumber && (
+                            <p className="text-xs text-slate-500">Batch: {item.batchNumber}</p>
+                          )}
+                        </td>
+                        <td className="py-3 text-sm text-slate-600 text-center">{item.quantity}</td>
+                        <td className="py-3 text-sm text-slate-600 text-right">
+                          LKR {item.unitPrice.toFixed(2)}
+                        </td>
+                        <td className="py-3 text-sm font-medium text-slate-900 text-right">
+                          LKR {item.subtotal.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end mb-6">
+                <div className="w-64 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Subtotal:</span>
+                    <span className="font-medium text-slate-900">
+                      LKR {invoiceData.subtotal.toFixed(2)}
+                    </span>
+                  </div>
+                  {invoiceData.discount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Discount:</span>
+                      <span className="font-medium text-slate-900">
+                        -LKR {invoiceData.discount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {invoiceData.tax > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Tax:</span>
+                      <span className="font-medium text-slate-900">
+                        LKR {invoiceData.tax.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-lg font-bold border-t-2 border-slate-300 pt-2">
+                    <span className="text-slate-900">TOTAL:</span>
+                    <span className="text-slate-900">LKR {invoiceData.total.toFixed(2)}</span>
+                  </div>
+                  {invoiceData.paymentMethod !== 'credit' && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-600">Paid:</span>
+                        <span className="font-medium text-slate-900">
+                          LKR {invoiceData.paidAmount.toFixed(2)}
+                        </span>
+                      </div>
+                      {invoiceData.changeAmount > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-600">Change:</span>
+                          <span className="font-medium text-green-600">
+                            LKR {invoiceData.changeAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
+                    <span className="text-slate-600">Payment Method:</span>
+                    <span className="font-medium text-slate-900 uppercase">
+                      {invoiceData.paymentMethod}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-center pt-6 border-t border-slate-200">
+                <p className="text-sm text-slate-600">Thank you for your business!</p>
+                <p className="text-xs text-slate-500 mt-1">This is a computer generated invoice</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .invoice-print, .invoice-print * {
+            visibility: visible;
+          }
+          .invoice-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 20px;
+          }
+        }
+      `}</style>
+    </>
+  );
+}

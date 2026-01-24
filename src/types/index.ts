@@ -1,0 +1,28 @@
+import { Database } from '../lib/database.types';
+
+export type Product = Database['public']['Tables']['products']['Row'];
+export type ProductBatch = Database['public']['Tables']['product_batches']['Row'];
+export type Customer = Database['public']['Tables']['customers']['Row'];
+export type Supplier = Database['public']['Tables']['suppliers']['Row'];
+export type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
+export type Sale = Database['public']['Tables']['sales']['Row'];
+export type SaleItem = Database['public']['Tables']['sale_items']['Row'];
+export type Return = Database['public']['Tables']['returns']['Row'];
+export type ReturnItem = Database['public']['Tables']['return_items']['Row'];
+export type PurchaseOrder = Database['public']['Tables']['purchase_orders']['Row'];
+export type PurchaseOrderItem = Database['public']['Tables']['purchase_order_items']['Row'];
+export type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
+
+export interface ProductWithStock extends Product {
+  batches: ProductBatch[];
+}
+
+export interface ProductWithBatches extends Product {
+  batches: ProductBatch[];
+}
+
+export interface CartItem {
+  product: Product;
+  batch: ProductBatch;
+  quantity: number;
+}
