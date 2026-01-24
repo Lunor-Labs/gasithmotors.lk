@@ -86,7 +86,7 @@ export function Login() {
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-200 text-center text-sm text-slate-600">
-          Demo credentials: admin@demo.com / demo123
+          Demo credentials: admin@gasith.lk / gasith@123
         </div>
       </div>
     </div>
