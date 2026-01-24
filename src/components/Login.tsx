@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LogIn } from 'lucide-react';
+import loginBg from '../assets/login_bg.mp4';
+import loginImage from '../assets/login.jpg';
+import logo from '../assets/favicon.jpeg';
 
 export function Login() {
   const { signIn } = useAuth();
@@ -33,7 +36,7 @@ export function Login() {
         playsInline
         className="absolute inset-0 w-full h-full object-cover"
       >
-        <source src="/src/assets/login_bg.mp4" type="video/mp4" />
+        <source src={loginBg} type="video/mp4" />
       </video>
 
       {/* Dark Overlay */}
@@ -47,7 +50,7 @@ export function Login() {
             {/* Background Image - Full Fill */}
             <div className="absolute inset-0 z-0">
               <img
-                src="/src/assets/login.jpg"
+                src={loginImage}
                 alt="Adventure"
                 className="w-full h-full object-cover blur-sm"
               />
@@ -57,7 +60,7 @@ export function Login() {
             <div className="relative z-10 flex flex-col justify-between h-full">
               <div className="flex items-center gap-3">
                 <img
-                  src="/src/assets/favicon.jpeg"
+                  src={logo}
                   alt="Gasith Motors Logo"
                   className="w-12 h-12 rounded-lg object-cover"
                 />
@@ -85,7 +88,7 @@ export function Login() {
             {/* Mobile Logo */}
             <div className="lg:hidden flex justify-center mb-6">
               <img
-                src="/src/assets/favicon.jpeg"
+                src={logo}
                 alt="Gasith Motors Logo"
                 className="w-14 h-14 rounded-lg object-cover"
               />
