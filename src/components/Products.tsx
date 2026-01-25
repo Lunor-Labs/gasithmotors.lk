@@ -30,6 +30,7 @@ export function Products() {
     // Initial stock fields
     initial_quantity: 0,
     cost_price: 0,
+    markup_percentage: 0,
     selling_price: 0,
     supplier_id: '',
   });
@@ -103,6 +104,7 @@ export function Products() {
       image_url: '',
       initial_quantity: 0,
       cost_price: 0,
+      markup_percentage: 0,
       selling_price: 0,
       supplier_id: '',
     });
@@ -160,6 +162,7 @@ export function Products() {
       image_url: product.image_url || '',
       initial_quantity: 0,
       cost_price: 0,
+      markup_percentage: 0,
       selling_price: 0,
       supplier_id: '',
     });
@@ -219,6 +222,7 @@ export function Products() {
             batch_number: batchNumber,
             supplier_id: formData.supplier_id,
             cost_price: formData.cost_price,
+            markup_percentage: formData.markup_percentage,
             selling_price: formData.selling_price,
             initial_quantity: formData.initial_quantity,
             current_quantity: formData.initial_quantity,
@@ -363,6 +367,7 @@ export function Products() {
                 scanningBarcode={scanningBarcode}
                 onStartBarcodeScanning={() => setScanningBarcode(true)}
                 suppliers={suppliers}
+                onSupplierAdded={loadSuppliers}
               />
             )}
           </div>

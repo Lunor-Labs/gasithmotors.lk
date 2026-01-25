@@ -1,7 +1,7 @@
 import { Database } from '../lib/database.types';
 
 export type Product = Database['public']['Tables']['products']['Row'];
-export type ProductBatch = Database['public']['Tables']['product_batches']['Row'];
+export type ProductBatch = Database['public']['Tables']['product_batches']['Row'] & { markup_percentage?: number };
 export type Customer = Database['public']['Tables']['customers']['Row'];
 export type Supplier = Database['public']['Tables']['suppliers']['Row'];
 export type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
