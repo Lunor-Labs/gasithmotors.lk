@@ -40,8 +40,8 @@ export function Reports() {
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
         .select('total_amount, sale_items(quantity, unit_price, cost_price)')
-        .gte('sale_date', dateRange.start)
-        .lte('sale_date', dateRange.end);
+        .gte('sale_date', `${dateRange.start}T00:00:00`)
+        .lte('sale_date', `${dateRange.end}T23:59:59`);
 
       if (salesError) throw salesError;
 
@@ -67,8 +67,8 @@ export function Reports() {
       const { data: commissionsData, error: commissionsError } = await supabase
         .from('referral_commissions')
         .select('referral_agent_id, sale_amount, commission_amount, status, referral_agents(name)')
-        .gte('created_at', dateRange.start)
-        .lte('created_at', dateRange.end);
+        .gte('created_at', `${dateRange.start}T00:00:00`)
+        .lte('created_at', `${dateRange.end}T23:59:59`);
 
       if (commissionsError) throw commissionsError;
 

@@ -304,6 +304,7 @@ export function POS() {
           customer_id: selectedCustomer?.id || null,
           referral_agent_id: selectedReferralAgent?.id || null,
           user_id: profile?.id,
+          sale_date: new Date().toISOString(),
           subtotal,
           discount_amount: discountAmount,
           tax_rate: taxRate,
