@@ -1,4 +1,4 @@
-import { Edit, Eye, Barcode, Printer } from 'lucide-react';
+import { Edit, Eye, Barcode, Printer, PackagePlus } from 'lucide-react';
 import { ProductWithStock } from '../../types';
 import { ProductImage } from '../ProductImage';
 
@@ -6,6 +6,7 @@ interface ProductTableProps {
   products: ProductWithStock[];
   onView: (product: ProductWithStock) => void;
   onEdit: (product: ProductWithStock) => void;
+  onAddStock: (product: ProductWithStock) => void;
   onPrintBarcode: (product: ProductWithStock) => void;
   isAdmin: boolean;
 }
@@ -14,6 +15,7 @@ export function ProductTable({
   products,
   onView,
   onEdit,
+  onAddStock,
   onPrintBarcode,
   isAdmin,
 }: ProductTableProps) {
@@ -78,13 +80,12 @@ export function ProductTable({
                 <td className="px-6 py-4 text-sm text-slate-600">{product.category || '-'}</td>
                 <td className="px-6 py-4">
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      product.total_stock <= product.reorder_level
-                        ? 'bg-red-100 text-red-800'
-                        : product.total_stock <= product.reorder_level * 2
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${product.total_stock <= product.reorder_level
+                      ? 'bg-red-100 text-red-800'
+                      : product.total_stock <= product.reorder_level * 2
                         ? 'bg-yellow-100 text-yellow-800'
                         : 'bg-green-100 text-green-800'
-                    }`}
+                      }`}
                   >
                     {product.total_stock}
                   </span>
@@ -101,6 +102,13 @@ export function ProductTable({
                     </button>
                     {isAdmin && (
                       <>
+                        <button
+                          onClick={() => onAddStock(product)}
+                          className="p-2 hover:bg-emerald-50 rounded-lg transition text-emerald-600"
+                          title="Add Stock"
+                        >
+                          <PackagePlus className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => onEdit(product)}
                           className="p-2 hover:bg-slate-100 rounded-lg transition"

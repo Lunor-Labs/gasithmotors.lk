@@ -9,6 +9,11 @@ interface ProductFormData {
   unit: string;
   reorder_level: number;
   image_url: string;
+  // Initial stock fields
+  initial_quantity?: number;
+  cost_price?: number;
+  selling_price?: number;
+  supplier_id?: string;
 }
 
 interface ProductFormProps {
@@ -19,6 +24,7 @@ interface ProductFormProps {
   mode: 'add' | 'edit';
   scanningBarcode: boolean;
   onStartBarcodeScanning: () => void;
+  suppliers: any[];
 }
 
 export function ProductForm({
@@ -29,6 +35,7 @@ export function ProductForm({
   mode,
   scanningBarcode,
   onStartBarcodeScanning,
+  suppliers,
 }: ProductFormProps) {
   return (
     <form onSubmit={onSubmit} className="p-6">
@@ -61,11 +68,10 @@ export function ProductForm({
             <button
               type="button"
               onClick={onStartBarcodeScanning}
-              className={`px-4 py-2 rounded-lg transition ${
-                scanningBarcode
-                  ? 'bg-green-600 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+              className={`px-4 py-2 rounded-lg transition ${scanningBarcode
+                ? 'bg-green-600 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
             >
               {scanningBarcode ? 'Scanning...' : 'Scan'}
             </button>
@@ -159,12 +165,79 @@ export function ProductForm({
           <input
             type="number"
             value={formData.reorder_level}
-            onChange={(e) => onChange({ ...formData, reorder_level: parseInt(e.target.value) })}
+            onChange={(e) => onChange({ ...formData, reorder_level: parseInt(e.target.value) || 0 })}
             min="0"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
           />
         </div>
       </div>
+
+      {mode === 'add' && (
+        <div className="mt-8 pt-6 border-t border-slate-200">
+          <h4 className="text-lg font-bold text-slate-900 mb-4">Initial Stock Intake (Optional)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Supplier
+              </label>
+              <select
+                value={formData.supplier_id || ''}
+                onChange={(e) => onChange({ ...formData, supplier_id: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              >
+                <option value="">Select supplier</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Initial Quantity
+              </label>
+              <input
+                type="number"
+                value={formData.initial_quantity || ''}
+                onChange={(e) => onChange({ ...formData, initial_quantity: parseInt(e.target.value) || 0 })}
+                min="0"
+                placeholder="0"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Cost Price (LKR)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.cost_price || ''}
+                onChange={(e) => onChange({ ...formData, cost_price: parseFloat(e.target.value) || 0 })}
+                min="0"
+                placeholder="0.00"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Selling Price (LKR)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.selling_price || ''}
+                onChange={(e) => onChange({ ...formData, selling_price: parseFloat(e.target.value) || 0 })}
+                min="0"
+                placeholder="0.00"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500 italic">
+            * Filling this section will automatically create the first stock batch for this product.
+          </p>
+        </div>
+      )}
 
       <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
         <button

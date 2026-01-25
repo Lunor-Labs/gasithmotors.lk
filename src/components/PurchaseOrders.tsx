@@ -39,6 +39,7 @@ export function PurchaseOrders() {
     order_date: new Date().toISOString().split('T')[0],
     notes: '',
   });
+  const [directReceive, setDirectReceive] = useState(false);
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const [currentItem, setCurrentItem] = useState({
     product_id: '',
@@ -151,6 +152,36 @@ export function PurchaseOrders() {
         .insert(itemsToInsert);
 
       if (itemsError) throw itemsError;
+
+      if (directReceive) {
+        // Automatically mark as received
+        await supabase
+          .from('purchase_orders')
+          .update({
+            status: 'received',
+            received_date: new Date().toISOString().split('T')[0],
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', poData.id);
+
+        for (const item of lineItems) {
+          const batchNumber = `${poData.po_number}-${item.product_id.substring(0, 8)}`;
+          await supabase.from('product_batches').insert({
+            product_id: item.product_id,
+            batch_number: batchNumber,
+            purchase_order_id: poData.id,
+            supplier_id: formData.supplier_id,
+            cost_price: item.cost_price,
+            selling_price: item.selling_price,
+            initial_quantity: item.quantity,
+            current_quantity: item.quantity,
+            received_date: new Date().toISOString().split('T')[0],
+          } as any);
+        }
+        alert('Stock received directly and PO completed!');
+      } else {
+        alert('Purchase order created successfully!');
+      }
 
       setShowModal(false);
       resetForm();
@@ -388,13 +419,12 @@ export function PurchaseOrders() {
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        order.status === 'received'
-                          ? 'bg-green-100 text-green-800'
-                          : order.status === 'cancelled'
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${order.status === 'received'
+                        ? 'bg-green-100 text-green-800'
+                        : order.status === 'cancelled'
                           ? 'bg-red-100 text-red-800'
                           : 'bg-yellow-100 text-yellow-800'
-                      }`}
+                        }`}
                     >
                       {order.status}
                     </span>
@@ -694,6 +724,19 @@ export function PurchaseOrders() {
                   </div>
                 )}
 
+                <div className="flex items-center gap-2 mb-6">
+                  <input
+                    type="checkbox"
+                    id="directReceive"
+                    checked={directReceive}
+                    onChange={(e) => setDirectReceive(e.target.checked)}
+                    className="w-4 h-4 text-slate-900 border-slate-300 rounded focus:ring-slate-900"
+                  />
+                  <label htmlFor="directReceive" className="text-sm font-medium text-slate-700">
+                    Direct Stock Intake (Mark as already received)
+                  </label>
+                </div>
+
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
@@ -706,7 +749,7 @@ export function PurchaseOrders() {
                     type="submit"
                     className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
                   >
-                    Create Purchase Order
+                    {directReceive ? 'Create & Receive Stock' : 'Create Purchase Order'}
                   </button>
                 </div>
               </form>

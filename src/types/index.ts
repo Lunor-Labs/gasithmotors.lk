@@ -15,6 +15,7 @@ export type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
 
 export interface ProductWithStock extends Product {
   batches: ProductBatch[];
+  total_stock: number;
 }
 
 export interface ProductWithBatches extends Product {

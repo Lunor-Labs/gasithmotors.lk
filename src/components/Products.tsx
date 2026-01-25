@@ -12,9 +12,11 @@ import { ProductDetailsView } from './products/ProductDetailsView';
 export function Products() {
   const { isAdmin } = useAuth();
   const { products, loading, refetch } = useProducts();
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
+  const [showAddStockInView, setShowAddStockInView] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductWithStock | null>(null);
   const [formData, setFormData] = useState({
     sku: '',
@@ -25,12 +27,26 @@ export function Products() {
     unit: 'piece',
     reorder_level: 0,
     image_url: '',
+    // Initial stock fields
+    initial_quantity: 0,
+    cost_price: 0,
+    selling_price: 0,
+    supplier_id: '',
   });
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [barcodeProduct, setBarcodeProduct] = useState<ProductWithStock | null>(null);
   const [scanningBarcode, setScanningBarcode] = useState(false);
   const [barcodeInputBuffer, setBarcodeInputBuffer] = useState('');
   const barcodeInputTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, []);
+
+  async function loadSuppliers() {
+    const { data } = await supabase.from('suppliers').select('id, name').eq('active', true).order('name');
+    setSuppliers(data || []);
+  }
 
   useEffect(() => {
     if (!showModal || modalMode === 'view') return;
@@ -85,6 +101,10 @@ export function Products() {
       unit: 'piece',
       reorder_level: 0,
       image_url: '',
+      initial_quantity: 0,
+      cost_price: 0,
+      selling_price: 0,
+      supplier_id: '',
     });
     setSelectedProduct(null);
     setScanningBarcode(false);
@@ -108,6 +128,10 @@ export function Products() {
       unit: product.unit,
       reorder_level: product.reorder_level,
       image_url: product.image_url || '',
+      initial_quantity: 0,
+      cost_price: 0,
+      selling_price: 0,
+      supplier_id: '',
     });
     setModalMode('edit');
     setShowModal(true);
@@ -116,6 +140,14 @@ export function Products() {
   function openViewModal(product: ProductWithStock) {
     setSelectedProduct(product);
     setModalMode('view');
+    setShowAddStockInView(false);
+    setShowModal(true);
+  }
+
+  function openAddStockModal(product: ProductWithStock) {
+    setSelectedProduct(product);
+    setModalMode('view');
+    setShowAddStockInView(true);
     setShowModal(true);
   }
 
@@ -129,20 +161,43 @@ export function Products() {
 
     try {
       if (modalMode === 'add') {
-        const { error } = await supabase.from('products').insert([
-          {
-            sku: formData.sku,
-            barcode: formData.barcode || null,
-            name: formData.name,
-            description: formData.description || null,
-            category: formData.category || null,
-            unit: formData.unit,
-            reorder_level: formData.reorder_level,
-            image_url: formData.image_url || null,
-          },
-        ]);
+        const { data: newProduct, error } = await supabase
+          .from('products')
+          .insert([
+            {
+              sku: formData.sku,
+              barcode: formData.barcode || null,
+              name: formData.name,
+              description: formData.description || null,
+              category: formData.category || null,
+              unit: formData.unit,
+              reorder_level: formData.reorder_level,
+              image_url: formData.image_url || null,
+            },
+          ] as any)
+          .select()
+          .single();
 
         if (error) throw error;
+
+        // Create initial batch if stock info provided
+        if (formData.initial_quantity > 0 && formData.supplier_id && newProduct) {
+          const product = newProduct as any;
+          const batchNumber = `INIT-${product.sku}-${new Date().getTime().toString().slice(-4)}`;
+          const { error: batchError } = await supabase.from('product_batches').insert({
+            product_id: product.id,
+            batch_number: batchNumber,
+            supplier_id: formData.supplier_id,
+            cost_price: formData.cost_price,
+            selling_price: formData.selling_price,
+            initial_quantity: formData.initial_quantity,
+            current_quantity: formData.initial_quantity,
+            received_date: new Date().toISOString().split('T')[0],
+          } as any);
+
+          if (batchError) throw batchError;
+        }
+
         alert('Product added successfully!');
       } else if (modalMode === 'edit' && selectedProduct) {
         const { error } = await supabase
@@ -156,7 +211,7 @@ export function Products() {
             unit: formData.unit,
             reorder_level: formData.reorder_level,
             image_url: formData.image_url || null,
-          })
+          } as any)
           .eq('id', selectedProduct.id);
 
         if (error) throw error;
@@ -222,6 +277,7 @@ export function Products() {
         products={filteredProducts}
         onView={openViewModal}
         onEdit={openEditModal}
+        onAddStock={openAddStockModal}
         onPrintBarcode={handlePrintBarcode}
         isAdmin={isAdmin}
       />
@@ -236,7 +292,12 @@ export function Products() {
             </div>
 
             {modalMode === 'view' && selectedProduct ? (
-              <ProductDetailsView product={selectedProduct} onClose={closeModal} />
+              <ProductDetailsView
+                product={selectedProduct}
+                onClose={closeModal}
+                onUpdate={refetch}
+                defaultShowAddStock={showAddStockInView}
+              />
             ) : (
               <ProductForm
                 formData={formData}
@@ -246,6 +307,7 @@ export function Products() {
                 mode={modalMode}
                 scanningBarcode={scanningBarcode}
                 onStartBarcodeScanning={() => setScanningBarcode(true)}
+                suppliers={suppliers}
               />
             )}
           </div>
