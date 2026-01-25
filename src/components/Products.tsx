@@ -111,8 +111,38 @@ export function Products() {
     setBarcodeInputBuffer('');
   }
 
-  function openAddModal() {
+  async function generateNextSKU() {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('sku')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) return 'SKU-0001';
+
+      const lastSku = (data[0] as any).sku;
+      const match = lastSku.match(/(\d+)$/);
+
+      if (!match) return `${lastSku}-0001`;
+
+      const lastNumber = parseInt(match[0]);
+      const nextNumber = lastNumber + 1;
+      const numberPart = nextNumber.toString().padStart(match[0].length, '0');
+
+      return lastSku.substring(0, lastSku.length - match[0].length) + numberPart;
+    } catch (error) {
+      console.error('Error generating SKU:', error);
+      return '';
+    }
+  }
+
+  async function openAddModal() {
     resetForm();
+    const nextSku = await generateNextSKU();
+    setFormData((prev) => ({ ...prev, sku: nextSku }));
     setModalMode('add');
     setShowModal(true);
   }
@@ -225,7 +255,32 @@ export function Products() {
     }
   }
 
-  function handlePrintBarcode(product: ProductWithStock) {
+  async function handlePrintBarcode(product: ProductWithStock) {
+    if (!product.barcode) {
+      const confirmAssign = window.confirm(`No barcode assigned. Would you like to generate one using SKU (${product.sku})?`);
+      if (confirmAssign) {
+        try {
+          const { error } = await supabase
+            .from('products')
+            .update({ barcode: product.sku } as any)
+            .eq('id', product.id);
+
+          if (error) throw error;
+
+          // Local update to avoid waiting for refetch to open modal
+          const updatedProduct = { ...product, barcode: product.sku };
+          setBarcodeProduct(updatedProduct);
+          setShowBarcodeModal(true);
+          refetch(); // Background refresh
+          return;
+        } catch (error: any) {
+          alert('Failed to assign barcode: ' + error.message);
+          return;
+        }
+      } else {
+        return;
+      }
+    }
     setBarcodeProduct(product);
     setShowBarcodeModal(true);
   }
@@ -316,7 +371,8 @@ export function Products() {
 
       {showBarcodeModal && barcodeProduct && (
         <BarcodeGenerator
-          value={barcodeProduct.barcode || ''}
+          barcode={barcodeProduct.barcode || ''}
+          sku={barcodeProduct.sku}
           productName={barcodeProduct.name}
           onClose={() => setShowBarcodeModal(false)}
         />

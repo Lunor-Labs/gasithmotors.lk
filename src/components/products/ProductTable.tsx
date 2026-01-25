@@ -116,15 +116,13 @@ export function ProductTable({
                         >
                           <Edit className="w-4 h-4 text-slate-600" />
                         </button>
-                        {product.barcode && (
-                          <button
-                            onClick={() => onPrintBarcode(product)}
-                            className="p-2 hover:bg-slate-100 rounded-lg transition"
-                            title="Print barcode"
-                          >
-                            <Printer className="w-4 h-4 text-slate-600" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => onPrintBarcode(product)}
+                          className="p-2 hover:bg-slate-100 rounded-lg transition"
+                          title="Print barcode"
+                        >
+                          <Printer className="w-4 h-4 text-slate-600" />
+                        </button>
                       </>
                     )}
                   </div>

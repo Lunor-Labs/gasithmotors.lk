@@ -36,9 +36,9 @@ export function BarcodeGenerator({ barcode, productName, sku, price, onClose }: 
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 print:hidden">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
+          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-xl print:hidden">
             <h2 className="text-xl font-bold text-slate-900">Product Barcode</h2>
             <div className="flex items-center gap-2">
               <button
@@ -57,18 +57,18 @@ export function BarcodeGenerator({ barcode, productName, sku, price, onClose }: 
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-6" id="barcode-content">
             <div className="barcode-print bg-white border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
               <h3 className="text-lg font-bold text-slate-900 mb-2">{productName}</h3>
               <p className="text-sm text-slate-600 mb-4">SKU: {sku}</p>
               <div className="flex justify-center mb-4">
-                <svg ref={barcodeRef}></svg>
+                <svg ref={barcodeRef} className="max-w-full"></svg>
               </div>
               {price && (
                 <p className="text-xl font-bold text-slate-900">LKR {price.toFixed(2)}</p>
               )}
             </div>
-            <p className="text-xs text-slate-500 text-center mt-4">
+            <p className="text-xs text-slate-500 text-center mt-4 print:hidden">
               Print this barcode and paste it on the product
             </p>
           </div>
@@ -77,20 +77,38 @@ export function BarcodeGenerator({ barcode, productName, sku, price, onClose }: 
 
       <style>{`
         @media print {
-          body * {
+          body {
             visibility: hidden;
+            background-color: white;
           }
-          .barcode-print, .barcode-print * {
+          #barcode-content {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            background-color: white;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          }
+          #barcode-content * {
             visibility: visible;
           }
           .barcode-print {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            border: 2px solid #000;
-            padding: 20px;
-            width: 300px;
+            border: 2px solid #000 !important;
+            padding: 40px !important;
+            width: auto !important;
+            max-width: 400px;
+            margin: 0 auto;
+            text-align: center;
+          }
+          .print\:hidden {
+            display: none !important;
           }
         }
       `}</style>
