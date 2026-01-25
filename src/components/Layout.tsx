@@ -33,7 +33,6 @@ export function Layout({ children, currentView, onNavigate }: LayoutProps) {
     { name: 'Dashboard', icon: BarChart3, view: 'dashboard', roles: ['admin', 'cashier'] },
     { name: 'POS', icon: ShoppingCart, view: 'pos', roles: ['admin', 'cashier'] },
     { name: 'Products', icon: Package, view: 'products', roles: ['admin', 'cashier'] },
-    { name: 'Purchase Orders', icon: FileText, view: 'purchase-orders', roles: ['admin', 'cashier'] },
     { name: 'Customers', icon: Users, view: 'customers', roles: ['admin', 'cashier'] },
     { name: 'Suppliers', icon: Truck, view: 'suppliers', roles: ['admin', 'cashier'] },
     { name: 'Referral Agents', icon: UserCheck, view: 'referral-agents', roles: ['admin'] },
@@ -48,7 +47,7 @@ export function Layout({ children, currentView, onNavigate }: LayoutProps) {
 
   const navGroups = [
     { title: '', items: ['dashboard'] },
-    { title: 'MANAGEMENT', items: ['pos', 'products', 'purchase-orders', 'returns'] },
+    { title: 'MANAGEMENT', items: ['pos', 'products', 'returns'] },
     { title: 'PARTIES', items: ['customers', 'suppliers', 'referral-agents'] },
     { title: 'REPORTS', items: ['reports'] },
     { title: 'SYSTEM', items: ['settings'] }

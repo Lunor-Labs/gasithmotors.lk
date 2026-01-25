@@ -7,7 +7,6 @@ import { Products } from './components/Products';
 import { Suppliers } from './components/Suppliers';
 import { Customers } from './components/Customers';
 import { ReferralAgents } from './components/ReferralAgents';
-import { PurchaseOrders } from './components/PurchaseOrders';
 import { POS } from './components/POS';
 import { Returns } from './components/Returns';
 import { Reports } from './components/Reports';
@@ -37,7 +36,6 @@ function AppContent() {
       {currentView === 'dashboard' && <Dashboard />}
       {currentView === 'pos' && <POS />}
       {currentView === 'products' && <Products />}
-      {currentView === 'purchase-orders' && <PurchaseOrders />}
       {currentView === 'customers' && <Customers />}
       {currentView === 'suppliers' && <Suppliers />}
       {currentView === 'referral-agents' && <ReferralAgents />}
