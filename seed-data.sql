@@ -72,3 +72,13 @@ SELECT name, phone, credit_limit, current_credit FROM customers ORDER BY name;
 
 SELECT 'Sample referral agents:' as section;
 SELECT name, type, commission_rate FROM referral_agents ORDER BY name;
+
+-- Fix missing columns in sales table
+ALTER TABLE sales 
+ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id),
+ADD COLUMN IF NOT EXISTS tax_rate DECIMAL(10,2) DEFAULT 0,
+ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10,2) DEFAULT 0;
+
+-- Fix missing columns in sale_items table
+ALTER TABLE sale_items
+ADD COLUMN IF NOT EXISTS total_price DECIMAL(10,2) DEFAULT 0;

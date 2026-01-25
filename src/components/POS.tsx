@@ -324,7 +324,9 @@ export function POS() {
         batch_id: item.batch.id,
         quantity: item.quantity,
         unit_price: item.batch.selling_price,
+        subtotal: item.batch.selling_price * item.quantity,
         total_price: item.batch.selling_price * item.quantity,
+        cost_price: item.batch.cost_price,
       }));
 
       const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
@@ -352,10 +354,10 @@ export function POS() {
 
       if (selectedReferralAgent) {
         const commissionAmount = total * (selectedReferralAgent.commission_rate / 100);
-        const { error: commissionError } = await supabase.from('commissions').insert({
+        const { error: commissionError } = await supabase.from('referral_commissions').insert({
           referral_agent_id: selectedReferralAgent.id,
           sale_id: saleData.id,
-          amount: commissionAmount,
+          commission_amount: commissionAmount,
         });
 
         if (commissionError) throw commissionError;
@@ -363,22 +365,24 @@ export function POS() {
 
       setInvoiceData({
         saleNumber,
-        date: new Date().toISOString(),
-        customer: selectedCustomer?.name || 'Walk-in Customer',
+        date: new Date().toLocaleDateString(),
+        customerName: selectedCustomer?.name || 'Walk-in Customer',
+        customerPhone: selectedCustomer?.phone,
         items: cart.map((item) => ({
           name: item.product.name,
           quantity: item.quantity,
           unitPrice: item.batch.selling_price,
-          total: item.batch.selling_price * item.quantity,
+          subtotal: item.batch.selling_price * item.quantity,
+          batchNumber: item.batch.batch_number,
         })),
         subtotal,
         discount: discountAmount,
-        taxRate,
-        taxAmount,
+        tax: taxAmount,
         total,
         paidAmount: actualPaidAmount,
         changeAmount,
         paymentMethod,
+        cashierName: profile?.full_name || 'Cashier',
       });
 
       setShowInvoice(true);
@@ -839,7 +843,7 @@ export function POS() {
       )}
 
       {showInvoice && invoiceData && (
-        <Invoice data={invoiceData} onClose={() => setShowInvoice(false)} />
+        <Invoice invoiceData={invoiceData} onClose={() => setShowInvoice(false)} />
       )}
     </div>
   );
