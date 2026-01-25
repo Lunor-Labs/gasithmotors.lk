@@ -14,6 +14,7 @@ import {
   UserCheck,
   Settings,
   LogOut,
+  Bell,
 } from 'lucide-react';
 import logo from '../assets/favicon.jpeg';
 
@@ -26,6 +27,7 @@ interface LayoutProps {
 export function Layout({ children, currentView, onNavigate }: LayoutProps) {
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const navigation = [
     { name: 'Dashboard', icon: BarChart3, view: 'dashboard', roles: ['admin', 'cashier'] },
@@ -155,15 +157,66 @@ export function Layout({ children, currentView, onNavigate }: LayoutProps) {
             <Menu className="w-6 h-6" />
           </button>
 
-          {/* Desktop Left: Dashboard Title (Placeholder matching the image roughly) */}
+          {/* Desktop Left: Dashboard Title */}
           <h2 className="hidden lg:block text-xl font-bold text-slate-800">
             {navigation.find(n => n.view === currentView)?.name || 'Dashboard Overview'}
           </h2>
 
           <div className="flex items-center gap-4 ml-auto">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-slate-900">{profile?.full_name}</p>
-              <p className="text-xs text-slate-500 capitalize">{profile?.role}</p>
+            {/* Search Bar - Optional/Hidden as per request, keeping space if needed or just removing */}
+            <div className="hidden md:flex relative">
+              {/* Search placeholder if needed, user said no need top search bar, so skipping */}
+            </div>
+
+            {/* Notification Bell */}
+            <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              <Bell className="w-5 h-5" />
+            </button>
+
+            {/* Profile */}
+            <div className="relative">
+              <button
+                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                className="flex items-center gap-3 focus:outline-none"
+              >
+                <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white font-bold text-sm ring-2 ring-white ring-offset-2 ring-offset-slate-50 hover:ring-red-100 transition-all">
+                  {profile?.full_name?.[0]?.toUpperCase() || 'U'}
+                </div>
+              </button>
+
+              {/* Profile Dropdown */}
+              {profileMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setProfileMenuOpen(false)}
+                  ></div>
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-40 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="px-4 py-3 border-b border-slate-50">
+                      <p className="text-sm font-semibold text-slate-900">{profile?.full_name}</p>
+                      <p className="text-xs text-slate-500 truncate">{profile?.email}</p>
+                    </div>
+
+                    <div className="p-1">
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-left">
+                        <Settings className="w-4 h-4" />
+                        Settings
+                      </button>
+                      <button
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          signOut();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors text-left"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
