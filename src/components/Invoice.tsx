@@ -92,7 +92,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 print:hidden">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
           <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
             <h2 className="text-xl font-bold text-slate-900">Invoice</h2>
@@ -253,18 +253,27 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
       <style>{`
         @media print {
-          body * {
+          body {
             visibility: hidden;
+            background-color: white;
           }
-          .invoice-print, .invoice-print * {
+          #invoice-content {
             visibility: visible;
-          }
-          .invoice-print {
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
             padding: 20px;
+            background-color: white;
+            z-index: 9999;
+          }
+          #invoice-content * {
+            visibility: visible;
+          }
+          .print\:hidden {
+            display: none !important;
           }
         }
       `}</style>
