@@ -8,13 +8,14 @@ import {
   FileText,
   RotateCcw,
   TrendingUp,
-  Settings,
-  LogOut,
   Menu,
   X,
   BarChart3,
   UserCheck,
+  Settings,
+  LogOut,
 } from 'lucide-react';
+import logo from '../assets/favicon.jpeg';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -23,7 +24,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children, currentView, onNavigate }: LayoutProps) {
-  const { profile, signOut, isAdmin } = useAuth();
+  const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
@@ -43,85 +44,137 @@ export function Layout({ children, currentView, onNavigate }: LayoutProps) {
     item.roles.includes(profile?.role || '')
   );
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-50">
-        <div className="flex items-center justify-between px-4 h-16">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 hover:bg-slate-100 rounded-lg transition"
-            >
-              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-            <div className="flex items-center gap-2">
-              <Package className="w-8 h-8 text-slate-900" />
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">Vehicle Parts POS</h1>
-                <p className="text-xs text-slate-500">{profile?.role === 'admin' ? 'Admin' : 'Cashier'}</p>
-              </div>
-            </div>
-          </div>
+  const navGroups = [
+    { title: '', items: ['dashboard'] },
+    { title: 'MANAGEMENT', items: ['pos', 'products', 'purchase-orders', 'returns'] },
+    { title: 'PARTIES', items: ['customers', 'suppliers', 'referral-agents'] },
+    { title: 'REPORTS', items: ['reports'] },
+    { title: 'SYSTEM', items: ['settings'] }
+  ];
 
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-slate-900">{profile?.full_name}</p>
-              <p className="text-xs text-slate-500">{profile?.email}</p>
-            </div>
-            <button
-              onClick={signOut}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
+  const renderNavItems = () => {
+    return navGroups.map((group, groupIndex) => {
+      const groupItems = filteredNavigation.filter(item => group.items.includes(item.view));
+      if (groupItems.length === 0) return null;
+
+      return (
+        <div key={groupIndex} className="mb-6">
+          {group.title && (
+            <h3 className="px-6 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              {group.title}
+            </h3>
+          )}
+          <div className="space-y-1 px-3">
+            {groupItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentView === item.view;
+
+              return (
+                <button
+                  key={item.view}
+                  onClick={() => {
+                    onNavigate(item.view);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${isActive
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                >
+                  <Icon className={`w-5 h-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
+                  <span className="font-medium">{item.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
+      );
+    });
+  };
 
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Mobile Sidebar Overlay */}
       <div
-        className={`fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden transition-opacity ${
-          sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
         onClick={() => setSidebarOpen(false)}
       />
 
+      {/* Sidebar */}
       <aside
-        className={`fixed top-16 left-0 bottom-0 w-64 bg-white border-r border-slate-200 z-40 transition-transform lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed lg:static inset-y-0 left-0 w-64 bg-[#0f172a] text-white z-50 transition-transform duration-300 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
       >
-        <nav className="p-4 space-y-1">
-          {filteredNavigation.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentView === item.view;
+        {/* Brand */}
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800/50">
+          <div className="flex items-center gap-3">
+            <img
+              src={logo}
+              alt="Gasith Motors"
+              className="w-8 h-8 rounded-lg object-cover"
+            />
+            <div className="flex flex-col">
+              <span className="font-bold text-lg tracking-wide">GASITH</span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-[0.2em] -mt-1">Motors</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden text-slate-400 hover:text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
 
-            return (
-              <button
-                key={item.view}
-                onClick={() => {
-                  onNavigate(item.view);
-                  setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                  isActive
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="font-medium">{item.name}</span>
-              </button>
-            );
-          })}
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-6 custom-scrollbar">
+          {renderNavItems()}
         </nav>
+
+        {/* Bottom Actions */}
+        <div className="p-4 border-t border-slate-800/50">
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="font-medium">Logout</span>
+          </button>
+        </div>
       </aside>
 
-      <main className="lg:pl-64 pt-16">
-        <div className="p-6">
-          {children}
-        </div>
-      </main>
+      {/* Main Content Wrapper */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header (Mobile Toggle + Desktop Info) */}
+        <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+
+          {/* Desktop Left: Dashboard Title (Placeholder matching the image roughly) */}
+          <h2 className="hidden lg:block text-xl font-bold text-slate-800">
+            {navigation.find(n => n.view === currentView)?.name || 'Dashboard Overview'}
+          </h2>
+
+          <div className="flex items-center gap-4 ml-auto">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-medium text-slate-900">{profile?.full_name}</p>
+              <p className="text-xs text-slate-500 capitalize">{profile?.role}</p>
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 p-6 overflow-y-auto">
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
