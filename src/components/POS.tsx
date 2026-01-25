@@ -358,6 +358,8 @@ export function POS() {
           referral_agent_id: selectedReferralAgent.id,
           sale_id: saleData.id,
           commission_amount: commissionAmount,
+          commission_rate: selectedReferralAgent.commission_rate,
+          sale_amount: total,
         });
 
         if (commissionError) throw commissionError;
