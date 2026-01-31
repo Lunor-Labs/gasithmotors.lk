@@ -13,7 +13,10 @@ import { Upload } from 'lucide-react';
 
 export function Products() {
   const { isAdmin } = useAuth();
-  const { products, loading, refetch } = useProducts();
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -42,6 +45,16 @@ export function Products() {
   const [scanningBarcode, setScanningBarcode] = useState(false);
   const [barcodeInputBuffer, setBarcodeInputBuffer] = useState('');
   const barcodeInputTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1); // Reset to page 1 on search
+      setDebouncedSearch(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     loadSuppliers();
@@ -292,14 +305,7 @@ export function Products() {
     setShowBarcodeModal(true);
   }
 
-  const filteredProducts = products.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.barcode && product.barcode.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  if (loading) {
+  if (loading && page === 1 && !searchTerm) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-lg text-slate-600">Loading products...</div>
@@ -310,7 +316,9 @@ export function Products() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-900">Products</h2>
+        <h2 className="text-2xl font-bold text-slate-900">
+          Products {totalCount > 0 && <span className="text-sm font-normal text-slate-500">({totalCount})</span>}
+        </h2>
 
         <div className="flex items-center gap-3">
           {isAdmin && (
@@ -347,14 +355,39 @@ export function Products() {
         </div>
       </div>
 
-      <ProductTable
-        products={filteredProducts}
-        onView={openViewModal}
-        onEdit={openEditModal}
-        onAddStock={openAddStockModal}
-        onPrintBarcode={handlePrintBarcode}
-        isAdmin={isAdmin}
-      />
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <ProductTable
+          products={products}
+          onView={openViewModal}
+          onEdit={openEditModal}
+          onAddStock={openAddStockModal}
+          onPrintBarcode={handlePrintBarcode}
+          isAdmin={isAdmin}
+        />
+
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50">
+          <div className="text-sm text-slate-600">
+            Page {page} of {totalPages || 1}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
 
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

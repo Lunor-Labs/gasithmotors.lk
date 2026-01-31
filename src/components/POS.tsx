@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Search, Barcode, Plus, ShoppingCart, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useProducts } from '../hooks/useProducts';
 import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
 import { Invoice } from './Invoice';
 import { ProductGrid } from './pos/ProductGrid';
@@ -9,7 +10,25 @@ import { CartItemsList } from './pos/CartItemsList';
 
 export function POS() {
   const { profile } = useAuth();
-  const [products, setProducts] = useState<ProductWithBatches[]>([]);
+
+  // Pagination & Search State
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(12); // Grid view needs slightly less items per page
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Use optimized hook
+  const {
+    products: productsData,
+    loading: productsLoading,
+    refetch: refetchProducts,
+    totalCount,
+    totalPages
+  } = useProducts(page, pageSize, debouncedSearch);
+
+  // Cast ProductWithStock[] to ProductWithBatches[] for compatibility
+  // They are structurally compatible as ProductWithStock extends ProductWithBatches
+  const products = productsData as unknown as ProductWithBatches[];
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [referralAgents, setReferralAgents] = useState<ReferralAgent[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -49,6 +68,16 @@ export function POS() {
     loadData();
   }, []);
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1); // Reset to page 1 on search
+      setDebouncedSearch(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (showBatchModal || showCustomerModal || showAgentModal || showInvoice) return;
@@ -83,33 +112,15 @@ export function POS() {
 
   async function loadData() {
     try {
-      const [productsRes, customersRes, agentsRes] = await Promise.all([
-        supabase.from('products').select('*').eq('active', true).order('name'),
+      // Only load customers and agents here, products are handled by the hook
+      const [customersRes, agentsRes] = await Promise.all([
         supabase.from('customers').select('*').order('name'),
         supabase.from('referral_agents').select('*').eq('active', true).order('name'),
       ]);
 
-      if (productsRes.error) throw productsRes.error;
       if (customersRes.error) throw customersRes.error;
       if (agentsRes.error) throw agentsRes.error;
 
-      const productsWithBatches = await Promise.all(
-        (productsRes.data || []).map(async (product) => {
-          const { data: batches } = await supabase
-            .from('product_batches')
-            .select('*')
-            .eq('product_id', product.id)
-            .gt('current_quantity', 0)
-            .order('received_date');
-
-          return {
-            ...product,
-            batches: batches || [],
-          };
-        })
-      );
-
-      setProducts(productsWithBatches);
       setCustomers(customersRes.data || []);
       setReferralAgents(agentsRes.data || []);
     } catch (error) {
@@ -117,12 +128,41 @@ export function POS() {
     }
   }
 
-  function searchProductByBarcode(barcode: string) {
-    const product = products.find((p) => p.barcode === barcode);
-    if (product) {
-      handleProductSelect(product);
-    } else {
-      alert('Product not found with this barcode');
+  // Hook handles refetching automatically
+
+  async function searchProductByBarcode(barcode: string) {
+    // For barcode scan, we might need to search globally if it's not in the current page
+    // So we do a direct DB lookup for exact barcode match
+    try {
+      const { data: productData, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('barcode', barcode)
+        .eq('active', true)
+        .single();
+
+      if (error || !productData) {
+        alert('Product not found with this barcode');
+        return;
+      }
+
+      // Fetch batches for this product
+      const { data: batches } = await supabase
+        .from('product_batches')
+        .select('*, supplier:supplier_id(name)')
+        .eq('product_id', productData.id)
+        .gt('current_quantity', 0)
+        .order('received_date');
+
+      const productWithBatches: ProductWithBatches = {
+        ...productData,
+        batches: batches || []
+      };
+
+      handleProductSelect(productWithBatches);
+
+    } catch (err) {
+      alert('Error searching product');
     }
   }
 
@@ -422,6 +462,7 @@ export function POS() {
       setShowInvoice(true);
       clearCart();
       loadData();
+      refetchProducts(); // Refresh stock levels
     } catch (error: any) {
       alert(`Error completing sale: ${error.message}`);
     } finally {
@@ -429,12 +470,7 @@ export function POS() {
     }
   }
 
-  const filteredProducts = products.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.barcode && product.barcode.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Not strictly filtered locally anymore except for fallback display
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -462,8 +498,45 @@ export function POS() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Products</h3>
-          <ProductGrid products={filteredProducts} onAddToCart={handleProductSelect} />
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-bold text-slate-900">Products</h3>
+            {totalCount > 0 && (
+              <span className="text-sm text-slate-500">{totalCount} items</span>
+            )}
+          </div>
+
+          {productsLoading ? (
+            <div className="flex items-center justify-center h-48">
+              <div className="text-slate-500">Loading products...</div>
+            </div>
+          ) : (
+            <>
+              <ProductGrid products={products} onAddToCart={handleProductSelect} />
+
+              {/* Pagination Controls */}
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
+                <div className="text-sm text-slate-600">
+                  Page {page} of {totalPages || 1}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
