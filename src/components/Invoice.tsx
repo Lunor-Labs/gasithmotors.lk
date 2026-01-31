@@ -36,56 +36,56 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
   };
 
   const handleWhatsAppShare = () => {
-    let message = `*INVOICE - ${invoiceData.saleNumber}*\n\n`;
-    message += `Date: ${invoiceData.date}\n`;
+    let message = `🧾 *INVOICE: ${invoiceData.saleNumber}*\n`;
+    message += `📅 Date: ${invoiceData.date}\n\n`;
+
+    message += `🏢 *Gasith Motors*\n`;
+    message += `📞 011-2345678\n\n`;
 
     if (invoiceData.customerName) {
-      message += `Customer: ${invoiceData.customerName}\n`;
+      message += `👤 Customer: ${invoiceData.customerName}\n`;
       if (invoiceData.customerPhone) {
-        message += `Phone: ${invoiceData.customerPhone}\n`;
-      }
-    }
-
-    message += `\n*ITEMS:*\n`;
-    message += `${'─'.repeat(40)}\n`;
-
-    invoiceData.items.forEach((item, index) => {
-      message += `${index + 1}. ${item.name}\n`;
-      message += `   Qty: ${item.quantity} × LKR ${item.unitPrice.toFixed(2)}\n`;
-      message += `   Subtotal: LKR ${item.subtotal.toFixed(2)}\n`;
-      if (item.batchNumber) {
-        message += `   Batch: ${item.batchNumber}\n`;
+        message += `📱 Phone: ${invoiceData.customerPhone}\n`;
       }
       message += `\n`;
+    }
+
+    message += `*ITEMS*\n`;
+    message += `--------------------------------\n`;
+
+    invoiceData.items.forEach((item, index) => {
+      message += `${index + 1}. ${item.name} ${item.batchNumber ? `(Batch: ${item.batchNumber})` : ''}\n`;
+      message += `   ${item.quantity} x ${item.unitPrice.toFixed(2)} = LKR ${item.subtotal.toFixed(2)}\n\n`;
     });
 
-    message += `${'─'.repeat(40)}\n`;
-    message += `Subtotal: LKR ${invoiceData.subtotal.toFixed(2)}\n`;
+    message += `--------------------------------\n`;
 
-    if (invoiceData.discount > 0) {
-      message += `Discount: -LKR ${invoiceData.discount.toFixed(2)}\n`;
+    // Summary details (Subtotal, Discount, Tax)
+    if (invoiceData.discount > 0 || invoiceData.tax > 0) {
+      message += `Subtotal: LKR ${invoiceData.subtotal.toFixed(2)}\n`;
+      if (invoiceData.discount > 0) message += `Discount: -LKR ${invoiceData.discount.toFixed(2)}\n`;
+      if (invoiceData.tax > 0) message += `Tax: LKR ${invoiceData.tax.toFixed(2)}\n`;
+      message += `\n`;
     }
 
-    if (invoiceData.tax > 0) {
-      message += `Tax: LKR ${invoiceData.tax.toFixed(2)}\n`;
-    }
+    // Grand Total
+    message += `💰 *TOTAL: LKR ${invoiceData.total.toFixed(2)}*\n`;
+    message += `--------------------------------\n\n`;
 
-    message += `\n*TOTAL: LKR ${invoiceData.total.toFixed(2)}*\n`;
-
+    // Payment details
+    message += `💳 Payment: ${invoiceData.paymentMethod.toUpperCase()}\n`;
     if (invoiceData.paymentMethod !== 'credit') {
-      message += `Paid: LKR ${invoiceData.paidAmount.toFixed(2)}\n`;
+      message += `💵 Paid: LKR ${invoiceData.paidAmount.toFixed(2)}\n`;
       if (invoiceData.changeAmount > 0) {
-        message += `Change: LKR ${invoiceData.changeAmount.toFixed(2)}\n`;
+        message += `🔄 Change: LKR ${invoiceData.changeAmount.toFixed(2)}\n`;
       }
     }
 
-    message += `\nPayment: ${invoiceData.paymentMethod.toUpperCase()}\n`;
-
     if (invoiceData.cashierName) {
-      message += `Cashier: ${invoiceData.cashierName}\n`;
+      message += `\nStudy by: ${invoiceData.cashierName}`;
     }
 
-    message += `\nThank you for your business!`;
+    message += `\n\nThank you for your business! 🙏`;
 
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
