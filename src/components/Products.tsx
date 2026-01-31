@@ -252,8 +252,8 @@ export function Products() {
 
         alert('Product added successfully!');
       } else if (modalMode === 'edit' && selectedProduct) {
-        const { error } = await supabase
-          .from('products')
+        const { error } = await (supabase
+          .from('products') as any)
           .update({
             sku: formData.sku,
             barcode: formData.barcode || null,
@@ -282,8 +282,8 @@ export function Products() {
       const confirmAssign = window.confirm(`No barcode assigned. Would you like to generate one using SKU (${product.sku})?`);
       if (confirmAssign) {
         try {
-          const { error } = await supabase
-            .from('products')
+          const { error } = await (supabase
+            .from('products') as any)
             .update({ barcode: product.sku } as any)
             .eq('id', product.id);
 
@@ -307,7 +307,7 @@ export function Products() {
     setShowBarcodeModal(true);
   }
 
-  if (loading && page === 1 && !searchTerm) {
+  if (loading && products.length === 0 && page === 1 && !searchTerm) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-lg text-slate-600">Loading products...</div>
@@ -384,7 +384,7 @@ export function Products() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <ProductTable
-          products={products}
+          products={products as any}
           onView={openViewModal}
           onEdit={openEditModal}
           onAddStock={openAddStockModal}
@@ -434,11 +434,11 @@ export function Products() {
               />
             ) : (
               <ProductForm
-                formData={formData}
-                onChange={setFormData}
+                formData={formData as any}
+                onChange={setFormData as any}
                 onSubmit={handleSubmit}
                 onCancel={closeModal}
-                mode={modalMode}
+                mode={modalMode as any}
                 scanningBarcode={scanningBarcode}
                 onStartBarcodeScanning={() => setScanningBarcode(true)}
                 suppliers={suppliers}

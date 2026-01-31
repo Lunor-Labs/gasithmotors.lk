@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, Barcode, Plus, ShoppingCart, X, LayoutGrid, List, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  LayoutGrid,
+  List,
+  Barcode,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts, SearchType } from '../hooks/useProducts';
 import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
@@ -43,7 +50,7 @@ export function POS() {
   const [selectedReferralAgent, setSelectedReferralAgent] = useState<ReferralAgent | null>(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductWithBatches | null>(null);
-  const [taxRate] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'credit' | 'mixed'>('cash');
   const [paidAmount, setPaidAmount] = useState(0);
   const [processing, setProcessing] = useState(false);
@@ -146,10 +153,10 @@ export function POS() {
           await db.offline_sales.update(saleObj.id!, { status: 'idle', synced: true });
           await db.offline_sales.delete(saleObj.id!); // Clean up
 
-          console.log(`Synced sale ${sale.sale_number}`);
+          console.log(`Synced sale ${sale.sale_number} `);
         } catch (err) {
           const saleObj: any = offlineSale;
-          console.error(`Failed to sync sale ${saleObj.id}:`, err);
+          console.error(`Failed to sync sale ${saleObj.id}: `, err);
           await db.offline_sales.update(saleObj.id!, {
             status: 'failed',
             error: err instanceof Error ? err.message : 'Unknown error'
@@ -434,7 +441,7 @@ export function POS() {
     if (paymentMethod === 'credit' && selectedCustomer) {
       const newTotalCredit = selectedCustomer.current_credit + creditAmount;
       if (newTotalCredit > selectedCustomer.credit_limit) {
-        alert(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)}`);
+        alert(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)} `);
         return;
       }
     }
@@ -447,7 +454,7 @@ export function POS() {
     setProcessing(true);
 
     try {
-      const saleNumber = `SALE-${Date.now()}`;
+      const saleNumber = `SALE-${Date.now()} `;
       // For credit sales, actualPaidAmount is what they paid now (partial). For others, it's the full paidAmount.
       const actualPaidAmount = paidAmount;
 
@@ -558,7 +565,7 @@ export function POS() {
     } catch (err: any) {
       if (!navigator.onLine) {
         // Handle Offline Mode
-        const saleNumber = `SALE-${Date.now()}`;
+        const saleNumber = `SALE-${Date.now()} `;
         const salePayload = {
           sale: {
             sale_number: saleNumber,
@@ -620,7 +627,7 @@ export function POS() {
 
         // Show Invoice with warning
         setInvoiceData({
-          saleNumber: `[OFFLINE] ${saleNumber}`,
+          saleNumber: `[OFFLINE] ${saleNumber} `,
           date: new Date().toLocaleDateString(),
           customerName: selectedCustomer?.name,
           customerPhone: selectedCustomer?.phone,
@@ -648,7 +655,7 @@ export function POS() {
       }
 
       const errorMessage = err instanceof Error ? err.message : 'Failed to complete sale';
-      alert(`Error completing sale: ${errorMessage}`);
+      alert(`Error completing sale: ${errorMessage} `);
     } finally {
       setProcessing(false);
     }
@@ -667,8 +674,8 @@ export function POS() {
         <SyncStatus />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
           {/* Search & Filter Bar */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
             <div className="flex gap-4">
@@ -688,7 +695,7 @@ export function POS() {
                   className="flex-1 outline-none text-slate-900"
                   autoFocus
                 />
-                <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'}`} />
+                <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'} `} />
               </div>
 
               <div className="relative min-w-[140px]">
@@ -710,7 +717,7 @@ export function POS() {
                   className={`p-1.5 rounded-md transition ${viewMode === 'grid'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
-                    }`}
+                    } `}
                   title="Grid View"
                 >
                   <LayoutGrid className="w-5 h-5" />
@@ -720,7 +727,7 @@ export function POS() {
                   className={`p-1.5 rounded-md transition ${viewMode === 'list'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
-                    }`}
+                    } `}
                   title="List View"
                 >
                   <List className="w-5 h-5" />
@@ -744,9 +751,14 @@ export function POS() {
               )}
             </div>
 
-            {productsLoading ? (
+            {productsLoading && products.length === 0 ? (
               <div className="flex items-center justify-center h-48">
                 <div className="text-slate-500">Loading catalog...</div>
+              </div>
+            ) : products.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 text-slate-500">
+                <Search className="w-12 h-12 mb-2 opacity-20" />
+                <p>No products found matching your search</p>
               </div>
             ) : (
               <>
@@ -787,83 +799,158 @@ export function POS() {
 
         {/* Sidebar: Cart & Customer */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sticky top-6 space-y-6">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Transaction Details</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Customer</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={selectedCustomer?.id || ''}
-                      onChange={(e) => {
-                        const customer = customers.find((c) => c.id === e.target.value);
-                        setSelectedCustomer(customer || null);
-                      }}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                    >
-                      <option value="">Walk-in Customer</option>
-                      {customers.map((customer) => (
-                        <option key={customer.id} value={customer.id}>
-                          {customer.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => setShowCustomerModal(true)}
-                      className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
-                      title="Add Customer"
-                    >
-                      <Plus className="w-5 h-5 text-slate-600" />
-                    </button>
-                  </div>
-                </div>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sticky top-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Sale Details</h3>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Referral Agent</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={selectedReferralAgent?.id || ''}
-                      onChange={(e) => {
-                        const agent = referralAgents.find((a) => a.id === e.target.value);
-                        setSelectedReferralAgent(agent || null);
-                      }}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                    >
-                      <option value="">No Agent</option>
-                      {referralAgents.map((agent) => (
-                        <option key={agent.id} value={agent.id}>
-                          {agent.name} ({agent.commission_rate}%)
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => setShowAgentModal(true)}
-                      className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
-                      title="Add Agent"
-                    >
-                      <Plus className="w-5 h-5 text-slate-600" />
-                    </button>
-                  </div>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Customer (Optional)</label>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedCustomer?.id || ''}
+                    onChange={(e) => {
+                      const customer = customers.find((c) => c.id === e.target.value);
+                      setSelectedCustomer(customer || null);
+                    }}
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                  >
+                    <option value="">Walk-in Customer</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerModal(true)}
+                    className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
+                    title="Add new customer"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Referral Agent (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedReferralAgent?.id || ''}
+                    onChange={(e) => {
+                      const agent = referralAgents.find((a) => a.id === e.target.value);
+                      setSelectedReferralAgent(agent || null);
+                    }}
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                  >
+                    <option value="">None</option>
+                    {referralAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name} ({agent.commission_rate}%)
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowAgentModal(true)}
+                    className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
+                    title="Add new referral agent"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Tax Rate (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={taxRate === 0 ? '' : taxRate}
+                  onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  max="100"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="credit">Credit</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={paidAmount === 0 ? '' : paidAmount}
+                  onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Subtotal:</span>
+                  <span className="font-medium text-slate-900">LKR {grossSubtotal.toFixed(2)}</span>
+                </div>
+                {itemLevelDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-orange-600">Item Discounts:</span>
+                    <span className="font-medium text-orange-600">-LKR {itemLevelDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+                {taxRate > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Tax ({taxRate}%):</span>
+                    <span className="font-medium text-slate-900">LKR {taxAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
+                  <span className="text-slate-900">Total:</span>
+                  <span className="text-slate-900">LKR {total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {changeAmount > 0 && paymentMethod === 'cash' && (
+                <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                  <div className="flex justify-between items-center text-green-700">
+                    <span className="text-sm font-medium">Change:</span>
+                    <span className="text-lg font-bold">LKR {changeAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-slate-100 pt-6">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5" />
-                  Cart
-                </h3>
-                <button
-                  onClick={clearCart}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium"
-                >
-                  Clear All
-                </button>
+                <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
+                {cart.length > 0 && (
+                  <button
+                    onClick={clearCart}
+                    className="text-xs text-red-600 hover:text-red-700"
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
-
-              <div className="max-h-64 overflow-y-auto -mx-2 px-2 mb-4">
+              <div className="-mx-2 px-2">
                 <CartItemsList
                   items={cart}
                   onUpdateQuantity={updateCartItemQuantity}
@@ -871,83 +958,16 @@ export function POS() {
                   onRemoveItem={removeFromCart}
                 />
               </div>
+            </div>
 
-              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div className="flex justify-between text-sm text-slate-600">
-                  <span>Subtotal</span>
-                  <span>LKR {effectiveSubtotal.toFixed(2)}</span>
-                </div>
-                {taxRate > 0 && (
-                  <div className="flex justify-between text-sm text-slate-600">
-                    <span>Tax ({taxRate}%)</span>
-                    <span>LKR {taxAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-bold text-slate-900 pt-2 border-t border-slate-200">
-                  <span>Total</span>
-                  <span>LKR {total.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Payment Method</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['cash', 'card', 'credit'] as const).map((method) => (
-                      <button
-                        key={method}
-                        onClick={() => setPaymentMethod(method)}
-                        className={`py-2 px-4 rounded-lg border text-sm font-medium capitalize transition ${paymentMethod === method
-                          ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                          }`}
-                      >
-                        {method}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {paymentMethod !== 'credit' && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Received Amount</label>
-                    <input
-                      type="number"
-                      value={paidAmount || ''}
-                      onChange={(e) => setPaidAmount(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                      placeholder="0.00"
-                    />
-                  </div>
-                )}
-
-                {changeAmount > 0 && paymentMethod === 'cash' && (
-                  <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                    <div className="flex justify-between items-center text-green-700">
-                      <span className="text-sm font-medium">Change Due</span>
-                      <span className="text-lg font-bold">LKR {changeAmount.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={completeSale}
-                  disabled={cart.length === 0 || processing}
-                  className="w-full py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-bold text-lg shadow-lg flex items-center justify-center gap-2"
-                >
-                  {processing ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-5 h-5" />
-                      Complete Sale
-                    </>
-                  )}
-                </button>
-              </div>
+            <div className="mt-6 space-y-2">
+              <button
+                onClick={completeSale}
+                disabled={cart.length === 0 || processing}
+                className="w-full py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                {processing ? 'Processing...' : 'Complete Sale'}
+              </button>
             </div>
           </div>
         </div>
@@ -965,7 +985,7 @@ export function POS() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
             <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-slate-900">Select Batch - {selectedProduct.name}</h3>
+              <h3 className="text-xl font-bold text-slate-900">Select Batch-{selectedProduct.name}</h3>
               <button
                 onClick={() => {
                   setShowBatchModal(false);
@@ -996,7 +1016,7 @@ export function POS() {
                       <td className="py-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${batch.current_quantity > 10 ? 'bg-green-100 text-green-700' :
                           batch.current_quantity > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                          }`}>
+                          } `}>
                           {batch.current_quantity} in stock
                         </span>
                       </td>

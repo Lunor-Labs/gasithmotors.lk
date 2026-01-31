@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
-import { Plus, Search, Edit, UserCheck, DollarSign, Calendar, CheckCircle, Clock } from 'lucide-react';
+import { Search, Plus, UserCheck, DollarSign, Edit, CheckCircle } from 'lucide-react';
 
 type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
 

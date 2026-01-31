@@ -33,8 +33,10 @@ interface ImportStats {
 
 export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
     const [file, setFile] = useState<File | null>(null);
-    const [previewData, setPreviewData] = useState<CSVRow[]>([]);
+    const [error, setError] = useState<string | null>(null);
     const [importing, setImporting] = useState(false);
+    const [successCount, setSuccessCount] = useState(0);
+    const [previewData, setPreviewData] = useState<CSVRow[]>([]);
     const [stats, setStats] = useState<ImportStats>({ total: 0, success: 0, failed: 0, errors: [] });
     const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'complete'>('upload');
     const fileInputRef = useRef<HTMLInputElement>(null);
