@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, Barcode, Plus, ShoppingCart, X } from 'lucide-react';
+import { Search, Barcode, Plus, ShoppingCart, X, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts, SearchType } from '../hooks/useProducts';
 import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
@@ -17,6 +17,7 @@ export function POS() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Use optimized hook
   const {
@@ -510,6 +511,29 @@ export function POS() {
                 <option value="barcode">Barcode</option>
               </select>
             </div>
+
+            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-md transition ${viewMode === 'grid'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                title="Grid View"
+              >
+                <LayoutGrid className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded-md transition ${viewMode === 'list'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                title="List View"
+              >
+                <List className="w-5 h-5" />
+              </button>
+            </div>
           </div>
           {barcodeBuffer && (
             <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
@@ -533,7 +557,11 @@ export function POS() {
             </div>
           ) : (
             <>
-              <ProductGrid products={products} onAddToCart={handleProductSelect} />
+              <ProductGrid
+                products={products}
+                onAddToCart={handleProductSelect}
+                viewMode={viewMode}
+              />
 
               {/* Pagination Controls */}
               <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
