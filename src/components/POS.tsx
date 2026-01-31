@@ -293,15 +293,17 @@ export function POS() {
       return;
     }
 
+    const creditAmount = paymentMethod === 'credit' ? Math.max(0, total - paidAmount) : 0;
+
     if (paymentMethod === 'credit' && !selectedCustomer) {
       alert('Please select a customer for credit sales');
       return;
     }
 
     if (paymentMethod === 'credit' && selectedCustomer) {
-      const newCredit = selectedCustomer.current_credit + total;
-      if (newCredit > selectedCustomer.credit_limit) {
-        alert('Customer credit limit exceeded');
+      const newTotalCredit = selectedCustomer.current_credit + creditAmount;
+      if (newTotalCredit > selectedCustomer.credit_limit) {
+        alert(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)}`);
         return;
       }
     }
@@ -315,8 +317,15 @@ export function POS() {
 
     try {
       const saleNumber = `SALE-${Date.now()}`;
-      const actualPaidAmount = paymentMethod === 'credit' ? 0 : paidAmount;
-      const status = paymentMethod === 'credit' ? 'credit' : 'completed';
+      // For credit sales, actualPaidAmount is what they paid now (partial). For others, it's the full paidAmount.
+      const actualPaidAmount = paidAmount;
+
+      let status: 'completed' | 'partial' | 'credit' = 'completed';
+      if (paymentMethod === 'credit') {
+        if (actualPaidAmount >= total) status = 'completed';
+        else if (actualPaidAmount > 0) status = 'partial';
+        else status = 'credit';
+      }
 
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
@@ -326,8 +335,8 @@ export function POS() {
           referral_agent_id: selectedReferralAgent?.id || null,
           user_id: profile?.id,
           sale_date: new Date().toISOString(),
-          subtotal: effectiveSubtotal, // Using effective subtotal (after item discounts)
-          discount_amount: discountAmount, // Only global discount
+          subtotal: effectiveSubtotal,
+          discount_amount: discountAmount,
           tax_rate: taxRate,
           tax_amount: taxAmount,
           total_amount: total,
@@ -345,7 +354,7 @@ export function POS() {
         product_id: item.product.id,
         batch_id: item.batch.id,
         quantity: item.quantity,
-        unit_price: item.price, // Use modified price
+        unit_price: item.price,
         subtotal: item.price * item.quantity,
         total_price: item.price * item.quantity,
         cost_price: item.batch.cost_price,
@@ -365,10 +374,11 @@ export function POS() {
         if (batchError) throw batchError;
       }
 
-      if (paymentMethod === 'credit' && selectedCustomer) {
+      // Only add the UNPAID amount to the customer's credit balance
+      if (paymentMethod === 'credit' && selectedCustomer && creditAmount > 0) {
         const { error: creditError } = await supabase
           .from('customers')
-          .update({ current_credit: selectedCustomer.current_credit + total })
+          .update({ current_credit: selectedCustomer.current_credit + creditAmount })
           .eq('id', selectedCustomer.id);
 
         if (creditError) throw creditError;
@@ -549,19 +559,19 @@ export function POS() {
               </select>
             </div>
 
-            {paymentMethod !== 'credit' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Paid Amount</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={paidAmount === 0 ? '' : paidAmount}
-                  onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={paidAmount === 0 ? '' : paidAmount}
+                onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                min="0"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+              />
+            </div>
           </div>
 
           <div className="border-t border-slate-200 pt-4 mb-4 space-y-2">

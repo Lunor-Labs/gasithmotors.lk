@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
-import { Plus, Search, Edit, Users, CreditCard } from 'lucide-react';
+import { Plus, Search, Edit, Users, CreditCard, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
+
+interface CreditSale {
+  id: string;
+  sale_number: string;
+  sale_date: string;
+  total_amount: number;
+  paid_amount: number;
+  status: 'credit' | 'partial' | 'completed';
+  notes: string | null;
+}
 
 export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -20,6 +30,12 @@ export function Customers() {
     credit_limit: 0,
     notes: '',
   });
+
+  // Credit Management State
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [creditSales, setCreditSales] = useState<CreditSale[]>([]);
+  const [loadingCreditSales, setLoadingCreditSales] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     loadCustomers();
@@ -112,6 +128,102 @@ export function Customers() {
     });
     setModalMode('edit');
     setShowModal(true);
+  }
+
+  function openCreditModal(customer: Customer) {
+    setSelectedCustomer(customer);
+    setShowCreditModal(true);
+    loadCreditSales(customer.id);
+    setPaymentAmount({});
+  }
+
+  async function loadCreditSales(customerId: string) {
+    setLoadingCreditSales(true);
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('*')
+        .eq('customer_id', customerId)
+        .in('status', ['credit', 'partial'])
+        .order('sale_date', { ascending: false });
+
+      if (error) throw error;
+      setCreditSales(data as CreditSale[]);
+    } catch (error) {
+      console.error('Error loading credit sales:', error);
+    } finally {
+      setLoadingCreditSales(false);
+    }
+  }
+
+  async function handleCreditPayment(sale: CreditSale) {
+    if (!selectedCustomer) return;
+
+    const amountStr = paymentAmount[sale.id];
+    if (!amountStr) return;
+
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    const remaining = sale.total_amount - sale.paid_amount;
+    if (amount > remaining) {
+      alert(`Amount cannot exceed remaining balance of LKR ${remaining.toFixed(2)}`);
+      return;
+    }
+
+    if (!confirm(`Confirm payment of LKR ${amount.toFixed(2)} for ${sale.sale_number}?`)) {
+      return;
+    }
+
+    try {
+      const newPaidAmount = sale.paid_amount + amount;
+      const newStatus = newPaidAmount >= sale.total_amount ? 'completed' : 'partial';
+      const newNotes = (sale.notes || '') + `\nPayment of LKR ${amount.toFixed(2)} received on ${new Date().toLocaleDateString()}`;
+
+      // 1. Update Sale
+      const { error: saleError } = await supabase
+        .from('sales')
+        .update({
+          paid_amount: newPaidAmount,
+          status: newStatus,
+          notes: newNotes,
+          updated_at: new Date().toISOString()
+        } as any)
+        .eq('id', sale.id);
+
+      if (saleError) throw saleError;
+
+      // 2. Update Customer Credit
+      const { error: customerError } = await supabase
+        .from('customers')
+        .update({
+          current_credit: selectedCustomer.current_credit - amount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedCustomer.id);
+
+      if (customerError) throw customerError;
+
+      alert('Payment recorded successfully');
+
+      // Refresh data
+      loadCustomers();
+      // Update selected customer local state to reflect new credit
+      setSelectedCustomer({
+        ...selectedCustomer,
+        current_credit: selectedCustomer.current_credit - amount
+      });
+      loadCreditSales(selectedCustomer.id);
+
+      // Clear input
+      setPaymentAmount({ ...paymentAmount, [sale.id]: '' });
+
+    } catch (error: any) {
+      alert('Error processing payment: ' + error.message);
+    }
   }
 
   const filteredCustomers = customers.filter((customer) =>
@@ -211,116 +323,243 @@ export function Customers() {
                 </div>
               </div>
             </div>
+            {customer.current_credit > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <button
+                  onClick={() => openCreditModal(customer)}
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition border border-slate-200"
+                >
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  Manage Credit & Payments
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">
-                {modalMode === 'add' ? 'Add Customer' : 'Edit Customer'}
-              </h3>
+      {
+        showModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+              <div className="p-6 border-b border-slate-200">
+                <h3 className="text-xl font-bold text-slate-900">
+                  {modalMode === 'add' ? 'Add Customer' : 'Edit Customer'}
+                </h3>
+              </div>
+
+              <form onSubmit={handleSubmit} className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Customer Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Address
+                    </label>
+                    <textarea
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Credit Limit
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.credit_limit}
+                      onChange={(e) => setFormData({ ...formData, credit_limit: parseFloat(e.target.value) })}
+                      min="0"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Notes
+                    </label>
+                    <textarea
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+                  >
+                    {modalMode === 'add' ? 'Add Customer' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleSubmit} className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Customer Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
+          </div>
+        )
+      }
+      {/* Credit Management Modal */}
+      {
+        showCreditModal && selectedCustomer && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+              <div className="p-6 border-b border-slate-200 flex justify-between items-start">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
+                  <h3 className="text-xl font-bold text-slate-900">Manage Credit</h3>
+                  <p className="text-slate-600">{selectedCustomer.name}</p>
                 </div>
+                <button
+                  onClick={() => setShowCreditModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition"
+                >
+                  <span className="text-2xl">&times;</span>
+                </button>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Address
-                  </label>
-                  <textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Credit Limit
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.credit_limit}
-                    onChange={(e) => setFormData({ ...formData, credit_limit: parseFloat(e.target.value) })}
-                    min="0"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Notes
-                  </label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
+              <div className="p-6 bg-slate-50 border-b border-slate-200">
+                <div className="flex items-center gap-4">
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Total Outstanding Credit</p>
+                    <p className="text-2xl font-bold text-red-600 mt-1">LKR {selectedCustomer.current_credit.toFixed(2)}</p>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Credit Limit</p>
+                    <p className="text-2xl font-bold text-slate-900 mt-1">LKR {selectedCustomer.credit_limit.toFixed(2)}</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex-1 overflow-y-auto p-6">
+                <h4 className="font-semibold text-slate-900 mb-4">Outstanding Sales</h4>
+
+                {loadingCreditSales ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+                  </div>
+                ) : creditSales.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                    <p className="text-slate-900 font-medium">No outstanding credit sales</p>
+                    <p className="text-slate-500 text-sm">This customer has no unpaid credit invoices.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {creditSales.map((sale) => {
+                      const remaining = sale.total_amount - sale.paid_amount;
+                      return (
+                        <div key={sale.id} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-bold text-slate-900">{sale.sale_number}</span>
+                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 uppercase">
+                                  {sale.status}
+                                </span>
+                              </div>
+                              <div className="text-sm text-slate-600 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4" />
+                                  {new Date(sale.sale_date).toLocaleDateString()}
+                                </div>
+                                <div>Total: LKR {sale.total_amount.toFixed(2)}</div>
+                                <div className="text-green-600">Paid: LKR {sale.paid_amount.toFixed(2)}</div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end gap-2">
+                              <div className="text-right">
+                                <p className="text-xs text-slate-500 uppercase font-semibold">Remaining Balance</p>
+                                <p className="text-xl font-bold text-red-600">LKR {remaining.toFixed(2)}</p>
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-2 w-full md:w-auto">
+                                <div className="relative">
+                                  <span className="absolute left-3 top-2 text-slate-500 text-sm">LKR</span>
+                                  <input
+                                    type="number"
+                                    placeholder="Amount"
+                                    value={paymentAmount[sale.id] || ''}
+                                    onChange={(e) => setPaymentAmount({ ...paymentAmount, [sale.id]: e.target.value })}
+                                    className="pl-10 pr-3 py-2 border border-slate-300 rounded-lg w-32 focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => handleCreditPayment(sale)}
+                                  disabled={!paymentAmount[sale.id]}
+                                  className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                >
+                                  Pay
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 border-t border-slate-200 flex justify-end">
                 <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => setShowCreditModal(false)}
                   className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
-                >
-                  {modalMode === 'add' ? 'Add Customer' : 'Save Changes'}
+                  Close
                 </button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
