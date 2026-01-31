@@ -250,6 +250,11 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
                     <p className="text-sm text-slate-500">
                       Received: {new Date(batch.received_date).toLocaleDateString()}
                     </p>
+                    {batch.supplier && (
+                      <p className="text-sm text-slate-500">
+                        Supplier: {batch.supplier.name}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-medium text-slate-900">{batch.current_quantity} units</p>

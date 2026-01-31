@@ -24,7 +24,7 @@ export function useProducts() {
         (productsData || []).map(async (product) => {
           const { data: batches } = await supabase
             .from('product_batches')
-            .select('*')
+            .select('*, supplier:supplier_id(name)')
             .eq('product_id', product.id)
             .order('received_date', { ascending: false });
 

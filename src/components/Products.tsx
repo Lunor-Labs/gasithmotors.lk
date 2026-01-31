@@ -8,6 +8,8 @@ import { BarcodeGenerator } from './BarcodeGenerator';
 import { ProductTable } from './products/ProductTable';
 import { ProductForm } from './products/ProductForm';
 import { ProductDetailsView } from './products/ProductDetailsView';
+import { ProductImporter } from './products/ProductImporter';
+import { Upload } from 'lucide-react';
 
 export function Products() {
   const { isAdmin } = useAuth();
@@ -15,6 +17,7 @@ export function Products() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
   const [showAddStockInView, setShowAddStockInView] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductWithStock | null>(null);
@@ -308,15 +311,27 @@ export function Products() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-900">Products</h2>
-        {isAdmin && (
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition"
-          >
-            <Plus className="w-5 h-5" />
-            Add Product
-          </button>
-        )}
+
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium"
+            >
+              <Upload className="w-4 h-4" />
+              Import CSV
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition"
+            >
+              <Plus className="w-5 h-5" />
+              Add Product
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
@@ -380,6 +395,15 @@ export function Products() {
           sku={barcodeProduct.sku}
           productName={barcodeProduct.name}
           onClose={() => setShowBarcodeModal(false)}
+        />
+      )}
+      {showImportModal && (
+        <ProductImporter
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            setShowImportModal(false);
+            refetch();
+          }}
         />
       )}
     </div>
