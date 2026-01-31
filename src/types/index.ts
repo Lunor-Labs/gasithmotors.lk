@@ -26,4 +26,6 @@ export interface CartItem {
   product: Product;
   batch: ProductBatch;
   quantity: number;
+  price: number; // The actual selling price (editable)
+  original_price: number; // The base selling price from batch
 }

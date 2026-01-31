@@ -157,7 +157,16 @@ export function POS() {
       newCart[existingItemIndex].quantity = newQuantity;
       setCart(newCart);
     } else {
-      setCart([...cart, { product, batch, quantity }]);
+      setCart([
+        ...cart,
+        {
+          product,
+          batch,
+          quantity,
+          price: batch.selling_price,
+          original_price: batch.selling_price,
+        },
+      ]);
     }
 
     setShowBatchModal(false);
@@ -182,6 +191,12 @@ export function POS() {
     setCart(newCart);
   }
 
+  function updateCartItemPrice(index: number, newPrice: number) {
+    const newCart = [...cart];
+    newCart[index].price = newPrice;
+    setCart(newCart);
+  }
+
   function removeFromCart(index: number) {
     setCart(cart.filter((_, i) => i !== index));
   }
@@ -190,15 +205,21 @@ export function POS() {
     setCart([]);
     setSelectedCustomer(null);
     setSelectedReferralAgent(null);
-    setDiscountAmount(0);
     setPaidAmount(0);
     setPaymentMethod('cash');
   }
 
-  const subtotal = cart.reduce((sum, item) => sum + item.batch.selling_price * item.quantity, 0);
-  const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
-  const total = subtotal - discountAmount + taxAmount;
+  // Calculations
+  const grossSubtotal = cart.reduce((sum, item) => sum + item.original_price * item.quantity, 0);
+  const effectiveSubtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const itemLevelDiscount = grossSubtotal - effectiveSubtotal;
+
+  // discountAmount is no longer used for global discount, simplifying math
+  const taxBase = effectiveSubtotal;
+  const taxAmount = taxBase * (taxRate / 100);
+  const total = taxBase + taxAmount;
   const changeAmount = paidAmount - total;
+
 
   async function handleCustomerSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -305,8 +326,8 @@ export function POS() {
           referral_agent_id: selectedReferralAgent?.id || null,
           user_id: profile?.id,
           sale_date: new Date().toISOString(),
-          subtotal,
-          discount_amount: discountAmount,
+          subtotal: effectiveSubtotal, // Using effective subtotal (after item discounts)
+          discount_amount: discountAmount, // Only global discount
           tax_rate: taxRate,
           tax_amount: taxAmount,
           total_amount: total,
@@ -324,9 +345,9 @@ export function POS() {
         product_id: item.product.id,
         batch_id: item.batch.id,
         quantity: item.quantity,
-        unit_price: item.batch.selling_price,
-        subtotal: item.batch.selling_price * item.quantity,
-        total_price: item.batch.selling_price * item.quantity,
+        unit_price: item.price, // Use modified price
+        subtotal: item.price * item.quantity,
+        total_price: item.price * item.quantity,
         cost_price: item.batch.cost_price,
       }));
 
@@ -374,11 +395,11 @@ export function POS() {
         items: cart.map((item) => ({
           name: item.product.name,
           quantity: item.quantity,
-          unitPrice: item.batch.selling_price,
-          subtotal: item.batch.selling_price * item.quantity,
+          unitPrice: item.price,
+          subtotal: item.price * item.quantity,
           batchNumber: item.batch.batch_number,
         })),
-        subtotal,
+        subtotal: effectiveSubtotal,
         discount: discountAmount,
         tax: taxAmount,
         total,
@@ -502,24 +523,11 @@ export function POS() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Discount</label>
-              <input
-                type="number"
-                step="0.01"
-                value={discountAmount}
-                onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                min="0"
-                max={subtotal}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-              />
-            </div>
-
-            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Tax Rate (%)</label>
               <input
                 type="number"
                 step="0.01"
-                value={taxRate}
+                value={taxRate === 0 ? '' : taxRate}
                 onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
                 min="0"
                 max="100"
@@ -547,7 +555,7 @@ export function POS() {
                 <input
                   type="number"
                   step="0.01"
-                  value={paidAmount}
+                  value={paidAmount === 0 ? '' : paidAmount}
                   onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
                   min="0"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
@@ -559,17 +567,20 @@ export function POS() {
           <div className="border-t border-slate-200 pt-4 mb-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">Subtotal:</span>
-              <span className="font-medium text-slate-900">LKR {subtotal.toFixed(2)}</span>
+              <span className="font-medium text-slate-900">LKR {grossSubtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Discount:</span>
-              <span className="font-medium text-slate-900">-LKR {discountAmount.toFixed(2)}</span>
-            </div>
+            {itemLevelDiscount > 0 && (
+              <div className="flex justify-between text-sm text-orange-600">
+                <span className="">Item Discounts:</span>
+                <span className="font-medium">-LKR {itemLevelDiscount.toFixed(2)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">Tax ({taxRate}%):</span>
               <span className="font-medium text-slate-900">LKR {taxAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-lg font-bold border-t border-slate-200 pt-2">
+            <div className="flex justify-between items-center text-lg font-bold border-t border-slate-200 pt-2">
               <span className="text-slate-900">Total:</span>
               <span className="text-slate-900">LKR {total.toFixed(2)}</span>
             </div>
@@ -597,6 +608,7 @@ export function POS() {
               <CartItemsList
                 items={cart}
                 onUpdateQuantity={updateCartItemQuantity}
+                onUpdatePrice={updateCartItemPrice}
                 onRemoveItem={removeFromCart}
               />
             </div>

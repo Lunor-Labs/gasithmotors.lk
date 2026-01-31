@@ -5,10 +5,11 @@ import { ProductImage } from '../ProductImage';
 interface CartItemsListProps {
   items: CartItem[];
   onUpdateQuantity: (index: number, change: number) => void;
+  onUpdatePrice?: (index: number, newPrice: number) => void;
   onRemoveItem: (index: number) => void;
 }
 
-export function CartItemsList({ items, onUpdateQuantity, onRemoveItem }: CartItemsListProps) {
+export function CartItemsList({ items, onUpdateQuantity, onUpdatePrice, onRemoveItem }: CartItemsListProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -58,9 +59,26 @@ export function CartItemsList({ items, onUpdateQuantity, onRemoveItem }: CartIte
                 <Plus className="w-4 h-4" />
               </button>
             </div>
-            <p className="font-bold text-slate-900">
-              LKR {(item.batch.selling_price * item.quantity).toFixed(2)}
-            </p>
+            <div className="text-right">
+              <div className="flex items-center gap-2 justify-end">
+                <span className="text-slate-600 text-xs">Unit:</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={item.price}
+                  onChange={(e) => onUpdatePrice && onUpdatePrice(index, parseFloat(e.target.value) || 0)}
+                  className="w-20 text-right px-1 py-0.5 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-slate-900 outline-none"
+                />
+              </div>
+              {item.price < item.original_price && (
+                <p className="text-xs text-slate-400 line-through text-right mt-0.5">
+                  LKR {item.original_price.toFixed(2)}
+                </p>
+              )}
+              <p className="font-bold text-slate-900 mt-0.5">
+                LKR {(item.price * item.quantity).toFixed(2)}
+              </p>
+            </div>
           </div>
         </div>
       ))}
