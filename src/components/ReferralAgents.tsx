@@ -65,7 +65,7 @@ export function ReferralAgents() {
         .order('name');
 
       if (error) throw error;
-      setAgents(data || []);
+      setAgents((data as any) || []);
     } catch (error) {
       console.error('Error loading referral agents:', error);
     } finally {
@@ -90,7 +90,7 @@ export function ReferralAgents() {
       if (error) throw error;
 
       // Transform and set data
-      const formattedData = (data || []).map(item => ({
+      const formattedData = ((data as any) || []).map((item: any) => ({
         ...item,
         sale: item.sale ? (Array.isArray(item.sale) ? item.sale[0] : item.sale) : null
       })) as Commission[];
@@ -151,7 +151,7 @@ export function ReferralAgents() {
           email: formData.email || null,
           address: formData.address || null,
           commission_rate: formData.commission_rate,
-        });
+        } as any);
 
         if (error) throw error;
       } else if (selectedAgent) {
@@ -165,7 +165,7 @@ export function ReferralAgents() {
             address: formData.address || null,
             commission_rate: formData.commission_rate,
             updated_at: new Date().toISOString(),
-          })
+          } as any)
           .eq('id', selectedAgent.id);
 
         if (error) throw error;
@@ -484,8 +484,8 @@ export function ReferralAgents() {
             <div className="flex border-b border-slate-200">
               <button
                 className={`px-6 py-3 text-sm font-medium border-b-2 transition ${activeTab === 'pending'
-                    ? 'border-slate-900 text-slate-900'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
                   }`}
                 onClick={() => setActiveTab('pending')}
               >
@@ -493,8 +493,8 @@ export function ReferralAgents() {
               </button>
               <button
                 className={`px-6 py-3 text-sm font-medium border-b-2 transition ${activeTab === 'history'
-                    ? 'border-slate-900 text-slate-900'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
                   }`}
                 onClick={() => setActiveTab('history')}
               >

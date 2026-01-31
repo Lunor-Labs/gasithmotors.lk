@@ -23,6 +23,7 @@ export interface ProductWithStock extends Product {
 
 export interface ProductWithBatches extends Product {
   batches: ProductBatch[];
+  search_words?: string[];
 }
 
 export interface CartItem {

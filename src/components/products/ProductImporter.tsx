@@ -102,7 +102,7 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                     .from('suppliers')
                     .select('id')
                     .eq('name', supplierName)
-                    .single();
+                    .single() as any;
 
                 if (existing) {
                     supplierMap.set(supplierName, existing.id);
@@ -110,9 +110,9 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                     // Create new
                     const { data: newSupplier, error } = await supabase
                         .from('suppliers')
-                        .insert({ name: supplierName, active: true })
+                        .insert({ name: supplierName, active: true } as any)
                         .select('id')
-                        .single();
+                        .single() as any;
 
                     if (error) throw error;
                     if (newSupplier) supplierMap.set(supplierName, newSupplier.id);
@@ -143,7 +143,7 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                     .from('products')
                     .select('id')
                     .eq('sku', cleanSku)
-                    .single();
+                    .single() as any;
 
                 if (existingProduct) {
                     productId = existingProduct.id;
@@ -161,9 +161,9 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                             reorder_level: parseInt(row.reorder_level || '0') || 5,
                             image_url: row.image_url || null,
                             active: true
-                        })
+                        } as any)
                         .select('id')
-                        .single();
+                        .single() as any;
 
                     if (prodError) throw prodError;
                     productId = newProduct.id;
@@ -188,7 +188,7 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                             current_quantity: qty,
                             received_date: new Date().toISOString(),
                             expiry_date: row.expiry_date || null
-                        });
+                        } as any);
 
                     if (batchError) throw batchError;
                 }

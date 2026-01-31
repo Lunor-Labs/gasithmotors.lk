@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { ProductWithStock } from '../types';
+import { ProductWithBatches } from '../types';
+import { db } from '../lib/db';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 export type SearchType = 'all' | 'name' | 'sku' | 'barcode';
 
@@ -10,108 +12,127 @@ export function useProducts(
   searchQuery: string = '',
   searchType: SearchType = 'all'
 ) {
-  const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
-  async function loadProducts() {
+  // Sync Products from Supabase to IndexedDB
+  const syncProducts = useCallback(async () => {
+    if (!navigator.onLine) return;
+
     try {
-      setLoading(true);
-      setError(null);
+      setSyncStatus('syncing');
 
-      // Calculate range for pagination
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      let query = supabase
+      // 1. Fetch all active products
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('active', true);
 
-      // Apply search filter if provided
+      if (productsError) throw productsError;
+      const products = productsData || [];
+
+      // 2. Fetch all batches that have stock or belong to active products
+      const { data: batchesData, error: batchesError } = await supabase
+        .from('product_batches')
+        .select('*, supplier:suppliers(name)');
+
+      if (batchesError) throw batchesError;
+      const batches = (batchesData || []) as any[];
+
+      // 3. Merge Batches into Products
+      const productsWithBatches: ProductWithBatches[] = products.map(product => {
+        const productBatches = batches
+          .filter(b => b.product_id === product.id)
+          .sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime());
+
+        return {
+          ...product,
+          batches: productBatches,
+        };
+      });
+
+      // 4. Update IndexedDB
+      await db.products.bulkPut(productsWithBatches);
+
+      setSyncStatus('idle');
+    } catch (err) {
+      console.error('Sync failed:', err);
+      setSyncStatus('error');
+      setError('Sync failed, but you can still use offline data.');
+    }
+  }, []);
+
+  // Initial Sync on Mount
+  useEffect(() => {
+    syncProducts();
+  }, [syncProducts]);
+
+  // Query Local Database
+  const queryResult = useLiveQuery(async () => {
+    try {
+      setLoading(true);
+      let collection = db.products.toCollection();
+
+      // Apply Search Filters
       if (searchQuery.trim()) {
-        const trimmedQuery = searchQuery.trim();
+        const query = searchQuery.trim().toLowerCase();
 
         switch (searchType) {
+          case 'sku':
+            collection = db.products.where('sku').startsWithIgnoreCase(query);
+            break;
+          case 'barcode':
+            collection = db.products.where('barcode').equals(query);
+            break;
           case 'name':
-            // Multi-word search: "Toyota Filter" -> name ILIKE '%Toyota%' AND name ILIKE '%Filter%'
-            trimmedQuery.split(/\s+/).forEach(word => {
-              query = query.ilike('name', `%${word}%`);
+            collection = db.products.filter(p => {
+              const words = query.split(/\s+/);
+              return words.every(word => p.name.toLowerCase().includes(word));
             });
             break;
-
-          case 'sku':
-            query = query.ilike('sku', `%${trimmedQuery}%`);
-            break;
-
-          case 'barcode':
-            query = query.ilike('barcode', `%${trimmedQuery}%`);
-            break;
-
           case 'all':
           default:
-            // Smart Search Logic:
-            // If query has spaces, assume it's a Name search (multi-word)
-            if (trimmedQuery.includes(' ')) {
-              trimmedQuery.split(/\s+/).forEach(word => {
-                query = query.ilike('name', `%${word}%`);
+            if (query.includes(' ')) {
+              collection = db.products.filter(p => {
+                const words = query.split(/\s+/);
+                return words.every(word => p.name.toLowerCase().includes(word));
               });
             } else {
-              // Single word: Search everywhere
-              query = query.or(`name.ilike.%${trimmedQuery}%,sku.ilike.%${trimmedQuery}%,barcode.ilike.%${trimmedQuery}%`);
+              collection = db.products.filter(p =>
+                p.name.toLowerCase().includes(query) ||
+                p.sku.toLowerCase().includes(query) ||
+                (p.barcode && p.barcode.includes(query))
+              );
             }
             break;
         }
       }
 
-      // Apply sorting and pagination
-      const { data: productsData, error: productsError, count } = await query
-        .order('name')
-        .range(from, to);
+      // Pagination
+      const count = await collection.count();
+      const offset = (page - 1) * pageSize;
+      const data = await collection
+        .offset(offset)
+        .limit(pageSize)
+        .toArray();
 
-      if (productsError) throw productsError;
-
-      setTotalCount(count || 0);
-
-      const productsWithStock = await Promise.all(
-        (productsData || []).map(async (product) => {
-          const { data: batches } = await supabase
-            .from('product_batches')
-            .select('*, supplier:supplier_id(name)')
-            .eq('product_id', product.id)
-            .order('received_date', { ascending: false });
-
-          const total_stock = batches?.reduce((sum, batch) => sum + batch.current_quantity, 0) || 0;
-
-          return {
-            ...product,
-            batches: batches || [],
-            total_stock,
-          };
-        })
-      );
-
-      setProducts(productsWithStock);
+      return { products: data, totalCount: count };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load products';
-      setError(errorMessage);
-      console.error('Error loading products:', err);
+      console.error('Local query failed:', err);
+      return { products: [], totalCount: 0 };
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    loadProducts();
   }, [page, pageSize, searchQuery, searchType]);
 
   return {
-    products,
+    products: queryResult?.products || [],
     loading,
     error,
-    totalCount,
-    totalPages: Math.ceil(totalCount / pageSize),
-    refetch: loadProducts,
+    totalCount: queryResult?.totalCount || 0,
+    totalPages: Math.ceil((queryResult?.totalCount || 0) / pageSize),
+    refetch: syncProducts,
+    syncStatus
   };
 }
