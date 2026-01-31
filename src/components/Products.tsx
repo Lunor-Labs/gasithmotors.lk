@@ -2,23 +2,25 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useProducts } from '../hooks/useProducts';
+import { useProducts, SearchType } from '../hooks/useProducts';
 import { ProductWithStock } from '../types';
 import { BarcodeGenerator } from './BarcodeGenerator';
 import { ProductTable } from './products/ProductTable';
 import { ProductForm } from './products/ProductForm';
 import { ProductDetailsView } from './products/ProductDetailsView';
 import { ProductImporter } from './products/ProductImporter';
-import { Upload } from 'lucide-react';
+import { Upload, Filter } from 'lucide-react';
 
 export function Products() {
   const { isAdmin } = useAuth();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchType, setSearchType] = useState<SearchType>('all');
+
+  const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch, searchType);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
@@ -343,15 +345,40 @@ export function Products() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="flex items-center gap-3">
-          <Search className="w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by name, SKU, or barcode..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 outline-none text-slate-900"
-          />
+        <div className="flex gap-4">
+          <div className="flex-1 flex items-center gap-3 border border-slate-200 rounded-lg px-3 py-2">
+            <Search className="w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder={
+                searchType === 'name' ? "Search by name (e.g. 'Toyota Filter')..." :
+                  searchType === 'sku' ? "Search by SKU..." :
+                    searchType === 'barcode' ? "Scan barcode..." :
+                      "Search by name, SKU, or barcode..."
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 outline-none text-slate-900"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select
+                value={searchType}
+                onChange={(e) => setSearchType(e.target.value as SearchType)}
+                className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                <option value="all">Smart Search</option>
+                <option value="name">Name Only</option>
+                <option value="sku">SKU Only</option>
+                <option value="barcode">Barcode</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                <Filter className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

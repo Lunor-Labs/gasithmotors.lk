@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { ProductWithStock } from '../types';
 
+export type SearchType = 'all' | 'name' | 'sku' | 'barcode';
+
 export function useProducts(
   page: number = 1,
   pageSize: number = 20,
-  searchQuery: string = ''
+  searchQuery: string = '',
+  searchType: SearchType = 'all'
 ) {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,9 +30,39 @@ export function useProducts(
         .eq('active', true);
 
       // Apply search filter if provided
-      if (searchQuery) {
-        // search by name, sku, or barcode
-        query = query.or(`name.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%,barcode.ilike.%${searchQuery}%`);
+      if (searchQuery.trim()) {
+        const trimmedQuery = searchQuery.trim();
+
+        switch (searchType) {
+          case 'name':
+            // Multi-word search: "Toyota Filter" -> name ILIKE '%Toyota%' AND name ILIKE '%Filter%'
+            trimmedQuery.split(/\s+/).forEach(word => {
+              query = query.ilike('name', `%${word}%`);
+            });
+            break;
+
+          case 'sku':
+            query = query.ilike('sku', `%${trimmedQuery}%`);
+            break;
+
+          case 'barcode':
+            query = query.ilike('barcode', `%${trimmedQuery}%`);
+            break;
+
+          case 'all':
+          default:
+            // Smart Search Logic:
+            // If query has spaces, assume it's a Name search (multi-word)
+            if (trimmedQuery.includes(' ')) {
+              trimmedQuery.split(/\s+/).forEach(word => {
+                query = query.ilike('name', `%${word}%`);
+              });
+            } else {
+              // Single word: Search everywhere
+              query = query.or(`name.ilike.%${trimmedQuery}%,sku.ilike.%${trimmedQuery}%,barcode.ilike.%${trimmedQuery}%`);
+            }
+            break;
+        }
       }
 
       // Apply sorting and pagination
@@ -71,7 +104,7 @@ export function useProducts(
 
   useEffect(() => {
     loadProducts();
-  }, [page, pageSize, searchQuery]);
+  }, [page, pageSize, searchQuery, searchType]);
 
   return {
     products,

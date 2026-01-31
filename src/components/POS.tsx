@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Search, Barcode, Plus, ShoppingCart, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useProducts } from '../hooks/useProducts';
+import { useProducts, SearchType } from '../hooks/useProducts';
 import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
 import { Invoice } from './Invoice';
 import { ProductGrid } from './pos/ProductGrid';
@@ -14,7 +14,9 @@ export function POS() {
   // Pagination & Search State
   const [page, setPage] = useState(1);
   const [pageSize] = useState(12); // Grid view needs slightly less items per page
+  const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchType, setSearchType] = useState<SearchType>('all');
 
   // Use optimized hook
   const {
@@ -23,7 +25,7 @@ export function POS() {
     refetch: refetchProducts,
     totalCount,
     totalPages
-  } = useProducts(page, pageSize, debouncedSearch);
+  } = useProducts(page, pageSize, debouncedSearch, searchType);
 
   // Cast ProductWithStock[] to ProductWithBatches[] for compatibility
   // They are structurally compatible as ProductWithStock extends ProductWithBatches
@@ -32,7 +34,7 @@ export function POS() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [referralAgents, setReferralAgents] = useState<ReferralAgent[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedReferralAgent, setSelectedReferralAgent] = useState<ReferralAgent | null>(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -476,18 +478,38 @@ export function POS() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-          <div className="flex items-center gap-2">
-            <Search className="w-5 h-5 text-slate-400" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search by name, SKU, or scan barcode..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 outline-none text-slate-900"
-              autoFocus
-            />
-            <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'}`} />
+          <div className="flex gap-4">
+            <div className="flex-1 flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
+              <Search className="w-5 h-5 text-slate-400" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder={
+                  searchType === 'name' ? "Search by name..." :
+                    searchType === 'sku' ? "Search by SKU..." :
+                      searchType === 'barcode' ? "Scan barcode..." :
+                        "Search / Scan..."
+                }
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="flex-1 outline-none text-slate-900"
+                autoFocus
+              />
+              <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'}`} />
+            </div>
+
+            <div className="relative min-w-[140px]">
+              <select
+                value={searchType}
+                onChange={(e) => setSearchType(e.target.value as SearchType)}
+                className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                <option value="all">Auto</option>
+                <option value="name">Name</option>
+                <option value="sku">SKU</option>
+                <option value="barcode">Barcode</option>
+              </select>
+            </div>
           </div>
           {barcodeBuffer && (
             <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
