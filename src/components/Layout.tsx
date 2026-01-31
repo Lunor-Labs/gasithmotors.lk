@@ -37,6 +37,7 @@ export function Layout({ children, currentView, onNavigate }: LayoutProps) {
     { name: 'Suppliers', icon: Truck, view: 'suppliers', roles: ['admin', 'cashier'] },
     { name: 'Referral Agents', icon: UserCheck, view: 'referral-agents', roles: ['admin'] },
     { name: 'Returns', icon: RotateCcw, view: 'returns', roles: ['admin', 'cashier'] },
+    { name: 'Sales History', icon: FileText, view: 'sales-history', roles: ['admin', 'cashier'] },
     { name: 'Reports', icon: TrendingUp, view: 'reports', roles: ['admin'] },
     { name: 'Settings', icon: Settings, view: 'settings', roles: ['admin'] },
   ];
@@ -49,7 +50,7 @@ export function Layout({ children, currentView, onNavigate }: LayoutProps) {
     { title: '', items: ['dashboard'] },
     { title: 'MANAGEMENT', items: ['pos', 'products', 'returns'] },
     { title: 'PARTIES', items: ['customers', 'suppliers', 'referral-agents'] },
-    { title: 'REPORTS', items: ['reports'] },
+    { title: 'REPORTS', items: ['reports', 'sales-history'] },
     { title: 'SYSTEM', items: ['settings'] }
   ];
 

@@ -9,6 +9,7 @@ import { Customers } from './components/Customers';
 import { ReferralAgents } from './components/ReferralAgents';
 import { POS } from './components/POS';
 import { Returns } from './components/Returns';
+import { SalesHistory } from './components/SalesHistory';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 
@@ -40,6 +41,7 @@ function AppContent() {
       {currentView === 'suppliers' && <Suppliers />}
       {currentView === 'referral-agents' && <ReferralAgents />}
       {currentView === 'returns' && <Returns />}
+      {currentView === 'sales-history' && <SalesHistory />}
       {currentView === 'reports' && <Reports />}
       {currentView === 'settings' && <Settings />}
     </Layout>
