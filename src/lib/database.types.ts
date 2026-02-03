@@ -129,6 +129,7 @@ export interface Database {
           supplier_id: string
           cost_price: number
           selling_price: number
+          markup_percentage: number
           initial_quantity: number
           current_quantity: number
           received_date: string
@@ -145,6 +146,7 @@ export interface Database {
           supplier_id: string
           cost_price: number
           selling_price: number
+          markup_percentage: number
           initial_quantity: number
           current_quantity: number
           received_date?: string
@@ -161,6 +163,7 @@ export interface Database {
           supplier_id?: string
           cost_price?: number
           selling_price?: number
+          markup_percentage?: number
           initial_quantity?: number
           current_quantity?: number
           received_date?: string

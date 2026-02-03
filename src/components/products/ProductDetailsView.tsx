@@ -4,6 +4,7 @@ import { ProductWithStock } from '../../types';
 import { ProductImage } from '../ProductImage';
 import { Plus } from 'lucide-react';
 import { SupplierForm } from '../suppliers/SupplierForm';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ProductDetailsViewProps {
   product: ProductWithStock;
@@ -13,6 +14,8 @@ interface ProductDetailsViewProps {
 }
 
 export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddStock = false }: ProductDetailsViewProps) {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [showAddStock, setShowAddStock] = useState(defaultShowAddStock);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showQuickAddSupplier, setShowQuickAddSupplier] = useState(false);
@@ -258,7 +261,12 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
                   </div>
                   <div className="text-right">
                     <p className="font-medium text-slate-900">{batch.current_quantity} units</p>
-                    <p className="text-sm text-slate-500">
+                    {isAdmin && (
+                      <p className="text-xs text-slate-500">
+                        Cost: LKR {batch.cost_price.toFixed(2)} ({batch.markup_percentage || 0}%)
+                      </p>
+                    )}
+                    <p className="text-sm font-bold text-slate-900">
                       LKR {batch.selling_price.toFixed(2)}
                     </p>
                   </div>

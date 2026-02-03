@@ -7,9 +7,10 @@ interface ProductGridProps {
   products: ProductWithBatches[];
   onAddToCart: (product: ProductWithBatches) => void;
   viewMode: 'grid' | 'list';
+  isAdmin: boolean;
 }
 
-export function ProductGrid({ products, onAddToCart, viewMode }: ProductGridProps) {
+export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: ProductGridProps) {
   const [previewImage, setPreviewImage] = useState<{ url: string; alt: string } | null>(null);
 
   if (products.length === 0) {
@@ -77,6 +78,15 @@ export function ProductGrid({ products, onAddToCart, viewMode }: ProductGridProp
                       <span className="flex items-center gap-1 text-xs">
                         {product.barcode}
                       </span>
+                    )}
+                    {isAdmin && product.batches.length > 0 && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-slate-400">Cost:</span>
+                        <span className="text-xs font-semibold text-slate-700">LKR {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].cost_price.toFixed(2)}</span>
+                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1 rounded font-medium">
+                          {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].markup_percentage}%
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -159,9 +169,17 @@ export function ProductGrid({ products, onAddToCart, viewMode }: ProductGridProp
                 <h4 className="font-medium text-slate-900 text-sm mb-1 truncate" title={product.name}>
                   {product.name}
                 </h4>
-                <p className="text-xs text-slate-500 mb-2 truncate">
+                <p className="text-xs text-slate-500 mb-1 truncate">
                   SKU: {product.sku}
                 </p>
+                {isAdmin && product.batches.length > 0 && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-semibold text-slate-600">Cost: LKR {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].cost_price.toFixed(2)}</span>
+                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1 rounded font-bold">
+                      {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].markup_percentage}%
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-bold text-slate-900">
                     LKR {lowestPrice.toFixed(2)}

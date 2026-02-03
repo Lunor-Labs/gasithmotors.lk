@@ -766,6 +766,7 @@ export function POS() {
                   products={products}
                   onAddToCart={handleProductSelect}
                   viewMode={viewMode}
+                  isAdmin={profile?.role === 'admin'}
                 />
 
                 {/* Pagination */}
@@ -1002,6 +1003,12 @@ export function POS() {
                   <tr className="border-b border-slate-100 text-slate-500 text-sm">
                     <th className="pb-3 pr-4">Batch Number</th>
                     <th className="pb-3 pr-4">Received Date</th>
+                    {profile?.role === 'admin' && (
+                      <>
+                        <th className="pb-3 pr-4">Cost</th>
+                        <th className="pb-3 pr-4">Markup</th>
+                      </>
+                    )}
                     <th className="pb-3 pr-4">Price</th>
                     <th className="pb-3 pr-4">Stock</th>
                     <th className="pb-3 text-right">Action</th>
@@ -1012,6 +1019,16 @@ export function POS() {
                     <tr key={batch.id} className="hover:bg-slate-50 transition">
                       <td className="py-4 font-mono text-sm">{batch.batch_number}</td>
                       <td className="py-4 text-sm text-slate-600">{new Date(batch.received_date).toLocaleDateString()}</td>
+                      {profile?.role === 'admin' && (
+                        <>
+                          <td className="py-4 text-sm text-slate-600">LKR {batch.cost_price?.toFixed(2) || '0.00'}</td>
+                          <td className="py-4 text-sm">
+                            <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                              {batch.markup_percentage || 0}%
+                            </span>
+                          </td>
+                        </>
+                      )}
                       <td className="py-4 text-sm font-bold text-slate-900">LKR {batch.selling_price.toFixed(2)}</td>
                       <td className="py-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${batch.current_quantity > 10 ? 'bg-green-100 text-green-700' :

@@ -43,6 +43,16 @@ export function ProductTable({
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Unit
               </th>
+              {isAdmin && (
+                <>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    Cost
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                    Markup
+                  </th>
+                </>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Actions
               </th>
@@ -91,6 +101,22 @@ export function ProductTable({
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-600">{product.unit}</td>
+                {isAdmin && (
+                  <>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                      {product.batches && product.batches.length > 0 ? (
+                        `LKR ${[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].cost_price.toFixed(2)}`
+                      ) : '-'}
+                    </td>
+                    <td className="px-6 py-4">
+                      {product.batches && product.batches.length > 0 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].markup_percentage}%
+                        </span>
+                      ) : '-'}
+                    </td>
+                  </>
+                )}
                 <td className="px-6 py-4">
                   <div className="flex gap-2">
                     <button

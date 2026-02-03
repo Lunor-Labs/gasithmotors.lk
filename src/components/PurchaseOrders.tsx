@@ -166,12 +166,14 @@ export function PurchaseOrders() {
 
         for (const item of lineItems) {
           const batchNumber = `${poData.po_number}-${item.product_id.substring(0, 8)}`;
+          const markup = item.cost_price > 0 ? ((item.selling_price - item.cost_price) / item.cost_price) * 100 : 0;
           await supabase.from('product_batches').insert({
             product_id: item.product_id,
             batch_number: batchNumber,
             purchase_order_id: poData.id,
             supplier_id: formData.supplier_id,
             cost_price: item.cost_price,
+            markup_percentage: Math.round(markup * 100) / 100,
             selling_price: item.selling_price,
             initial_quantity: item.quantity,
             current_quantity: item.quantity,
@@ -210,6 +212,7 @@ export function PurchaseOrders() {
 
       for (const item of po.items) {
         const batchNumber = `${po.po_number}-${item.product_id.substring(0, 8)}`;
+        const markup = item.cost_price > 0 ? ((item.selling_price - item.cost_price) / item.cost_price) * 100 : 0;
 
         const { error: batchError } = await supabase.from('product_batches').insert({
           product_id: item.product_id,
@@ -217,11 +220,12 @@ export function PurchaseOrders() {
           purchase_order_id: po.id,
           supplier_id: po.supplier_id,
           cost_price: item.cost_price,
+          markup_percentage: Math.round(markup * 100) / 100,
           selling_price: item.selling_price,
           initial_quantity: item.quantity,
           current_quantity: item.quantity,
           received_date: new Date().toISOString().split('T')[0],
-        });
+        } as any);
 
         if (batchError) throw batchError;
       }

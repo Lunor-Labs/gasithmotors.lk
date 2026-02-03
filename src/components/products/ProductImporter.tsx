@@ -185,6 +185,7 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                             supplier_id: supplierId,
                             batch_number: row.batch_number || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                             cost_price: costPrice,
+                            markup_percentage: markup,
                             selling_price: Math.round(sellingPrice * 100) / 100, // Round to 2 decimals
                             initial_quantity: qty,
                             current_quantity: qty,
