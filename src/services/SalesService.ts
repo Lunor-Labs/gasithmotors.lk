@@ -4,15 +4,17 @@ import { Sale, SaleItem } from '../types';
 import { logger } from '../lib/logger';
 
 export interface CreateSaleInput {
-    customer_id?: string;
+    customer_id?: string | null;
     cashier_id: string;
+    referral_agent_id?: string | null;
     items: Array<{
         product_id: string;
         batch_id: string;
         quantity: number;
         unit_price: number;
+        cost_price?: number;
     }>;
-    payment_method: 'cash' | 'card' | 'credit';
+    payment_method: 'cash' | 'card' | 'credit' | 'mixed';
     subtotal: number;
     discount_amount: number;
     tax_amount: number;
