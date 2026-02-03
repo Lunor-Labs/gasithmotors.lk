@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
-import { Plus, Search, Edit, Users, CreditCard, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Plus, Search, Edit, Users, CreditCard, CheckCircle, Clock, AlertCircle, Eye, FileText, X } from 'lucide-react';
+import { Invoice, InvoiceData } from './Invoice';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 
@@ -13,7 +14,18 @@ interface CreditSale {
   paid_amount: number;
   status: 'credit' | 'partial' | 'completed';
   notes: string | null;
+  payment_method: string;
+  subtotal: number;
+  discount_amount: number;
+  tax_amount: number;
+  cashier_id: string;
+  user_id: string;
 }
+
+type SaleDetailItem = Database['public']['Tables']['sale_items']['Row'] & {
+  product?: { name: string; sku: string } | null;
+  batch?: { batch_number: string } | null;
+};
 
 export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -36,6 +48,14 @@ export function Customers() {
   const [creditSales, setCreditSales] = useState<CreditSale[]>([]);
   const [loadingCreditSales, setLoadingCreditSales] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<{ [key: string]: string }>({});
+
+  // Sale Detail Modal State (Same as SalesHistory)
+  const [selectedSaleDetail, setSelectedSaleDetail] = useState<CreditSale | null>(null);
+  const [saleDetailItems, setSaleDetailItems] = useState<SaleDetailItem[]>([]);
+  const [loadingSaleItems, setLoadingSaleItems] = useState(false);
+  const [showSaleDetailModal, setShowSaleDetailModal] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
 
   useEffect(() => {
     loadCustomers();
@@ -224,6 +244,73 @@ export function Customers() {
     } catch (error: any) {
       alert('Error processing payment: ' + error.message);
     }
+  }
+
+  async function openSaleDetails(sale: CreditSale) {
+    setSelectedSaleDetail(sale);
+    setShowSaleDetailModal(true);
+    setLoadingSaleItems(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('sale_items')
+        .select(`
+          *,
+          product:products(name, sku),
+          batch:product_batches(batch_number)
+        `)
+        .eq('sale_id', sale.id);
+
+      if (error) throw error;
+
+      // Transform data
+      const formattedItems = (data as any[] || []).map(item => ({
+        ...item,
+        product: item.product ? (Array.isArray(item.product) ? item.product[0] : item.product) : null,
+        batch: item.batch ? (Array.isArray(item.batch) ? item.batch[0] : item.batch) : null,
+      })) as SaleDetailItem[];
+
+      setSaleDetailItems(formattedItems);
+    } catch (error) {
+      console.error('Error loading sale items:', error);
+      alert('Failed to load sale details');
+    } finally {
+      setLoadingSaleItems(false);
+    }
+  }
+
+  async function handleGenerateInvoice() {
+    if (!selectedSaleDetail || !saleDetailItems.length) return;
+
+    // Fetch cashier/user profile name if needed, or assume system for now as it's not joined in loadCreditSales
+    // To match SalesHistory exactly, we might need a join in loadCreditSales too, 
+    // but for now let's use the ID or a placeholder.
+    // Actually, SalesHistory fetches cashier name. Let's try to get it here if possible or use 'System'.
+
+    const data: InvoiceData = {
+      saleNumber: selectedSaleDetail.sale_number,
+      date: new Date(selectedSaleDetail.sale_date).toLocaleDateString(),
+      customerName: selectedCustomer?.name || 'Walk-in Customer',
+      customerPhone: selectedCustomer?.phone || undefined,
+      items: saleDetailItems.map(item => ({
+        name: item.product?.name || 'Unknown Item',
+        quantity: item.quantity,
+        unitPrice: item.unit_price,
+        subtotal: item.subtotal,
+        batchNumber: item.batch?.batch_number || '',
+      })),
+      subtotal: selectedSaleDetail.subtotal,
+      discount: selectedSaleDetail.discount_amount,
+      tax: selectedSaleDetail.tax_amount,
+      total: selectedSaleDetail.total_amount,
+      paidAmount: selectedSaleDetail.paid_amount,
+      changeAmount: Math.max(0, selectedSaleDetail.paid_amount - selectedSaleDetail.total_amount),
+      paymentMethod: selectedSaleDetail.payment_method || 'cash',
+      cashierName: 'System', // Placeholder unless we join user_profiles
+    };
+
+    setInvoiceData(data);
+    setShowInvoice(true);
   }
 
   const filteredCustomers = customers.filter((customer) =>
@@ -500,6 +587,13 @@ export function Customers() {
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="font-bold text-slate-900">{sale.sale_number}</span>
+                                <button
+                                  onClick={() => openSaleDetails(sale)}
+                                  className="p-1 hover:bg-slate-100 rounded-md transition text-blue-600"
+                                  title="View Sale Details"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
                                 <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 uppercase">
                                   {sale.status}
                                 </span>
@@ -560,6 +654,127 @@ export function Customers() {
           </div>
         )
       }
+      {/* Sale Details Modal */}
+      {showSaleDetailModal && selectedSaleDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 text-left">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Sale Details: {selectedSaleDetail.sale_number}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  {new Date(selectedSaleDetail.sale_date).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSaleDetailModal(false)}
+                className="p-2 hover:bg-slate-200 rounded-full transition"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <p className="text-xs font-semibold text-slate-500 uppercase">Customer</p>
+                  <p className="text-lg font-medium text-slate-900 mt-1">
+                    {selectedCustomer?.name || 'Walk-in Customer'}
+                  </p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <p className="text-xs font-semibold text-slate-500 uppercase">Payment Method</p>
+                  <p className="text-lg font-medium text-slate-900 mt-1 capitalize">
+                    {selectedSaleDetail.payment_method}
+                  </p>
+                </div>
+              </div>
+
+              <h4 className="font-bold text-slate-900 mb-4">Ordered Items</h4>
+              <div className="border border-slate-200 rounded-lg overflow-hidden mb-6">
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Product</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">SKU</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Unit Price</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Qty</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {loadingSaleItems ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                          Loading items...
+                        </td>
+                      </tr>
+                    ) : (
+                      saleDetailItems.map((item) => (
+                        <tr key={item.id}>
+                          <td className="px-4 py-3 text-sm text-slate-900 font-medium">
+                            {item.product?.name || 'Unknown Item'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-500">
+                            {item.product?.sku}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 text-right">
+                            {item.unit_price.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-900 text-right">
+                            {item.quantity}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900 text-right">
+                            {item.subtotal.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot className="bg-slate-50 font-bold">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-right text-slate-900">Total Amount:</td>
+                      <td className="px-4 py-3 text-right text-slate-900">LKR {selectedSaleDetail.total_amount.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-between">
+              <button
+                onClick={handleGenerateInvoice}
+                className="px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition flex items-center gap-2"
+                disabled={loadingSaleItems}
+              >
+                <FileText className="w-4 h-4" />
+                Print / Share Invoice
+              </button>
+              <button
+                onClick={() => setShowSaleDetailModal(false)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Component */}
+      {showInvoice && invoiceData && (
+        <div className="z-[70] relative">
+          <Invoice
+            invoiceData={invoiceData}
+            onClose={() => setShowInvoice(false)}
+          />
+        </div>
+      )}
     </div >
   );
 }
