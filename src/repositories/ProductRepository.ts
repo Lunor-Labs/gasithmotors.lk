@@ -13,21 +13,59 @@ export class ProductRepository extends BaseRepository<Product> {
     /**
      * Find all products with their stock batches
      * Optimized to avoid N+1 query problem
+     * Uses chunked fetching to handle more than 1000 products
      */
     async findAllWithStock(): Promise<ProductWithStock[]> {
-        // Fetch all active products
-        const products = await this.findAll({ active: true });
+        const CHUNK_SIZE = 1000;
 
-        if (products.length === 0) {
+        // 1. Fetch all active products in chunks
+        let allProducts: Product[] = [];
+        let fromProduct = 0;
+        let hasMoreProducts = true;
+
+        while (hasMoreProducts) {
+            const chunk = await this.adapter.query<Product>(this.tableName, {
+                where: [{ field: 'active', operator: '=', value: true }],
+                offset: fromProduct,
+                limit: CHUNK_SIZE,
+            });
+
+            allProducts = [...allProducts, ...chunk];
+
+            if (chunk.length < CHUNK_SIZE) {
+                hasMoreProducts = false;
+            } else {
+                fromProduct += CHUNK_SIZE;
+            }
+        }
+
+        if (allProducts.length === 0) {
             return [];
         }
 
-        // Fetch ALL batches in a single query
-        const allBatches = await this.adapter.query<ProductBatch>('product_batches', {
-            orderBy: [{ field: 'received_date', direction: 'desc' }],
-        });
+        // 2. Fetch ALL batches in chunks with supplier join
+        let allBatches: ProductBatch[] = [];
+        let fromBatch = 0;
+        let hasMoreBatches = true;
 
-        // Group batches by product_id in memory
+        while (hasMoreBatches) {
+            const chunk = await this.adapter.query<ProductBatch>('product_batches', {
+                select: '*, supplier:suppliers(name)', // Join supplier information
+                orderBy: [{ field: 'received_date', direction: 'desc' }],
+                offset: fromBatch,
+                limit: CHUNK_SIZE,
+            });
+
+            allBatches = [...allBatches, ...chunk];
+
+            if (chunk.length < CHUNK_SIZE) {
+                hasMoreBatches = false;
+            } else {
+                fromBatch += CHUNK_SIZE;
+            }
+        }
+
+        // 3. Group batches by product_id in memory
         const batchesByProduct = new Map<string, ProductBatch[]>();
         for (const batch of allBatches) {
             if (!batchesByProduct.has(batch.product_id)) {
@@ -36,8 +74,8 @@ export class ProductRepository extends BaseRepository<Product> {
             batchesByProduct.get(batch.product_id)!.push(batch);
         }
 
-        // Combine products with their batches
-        const productsWithStock = products.map((product) => {
+        // 4. Combine products with their batches
+        const productsWithStock = allProducts.map((product) => {
             const batches = batchesByProduct.get(product.id) || [];
             const total_stock = batches.reduce((sum, batch) => sum + batch.current_quantity, 0);
 
@@ -109,6 +147,7 @@ export class ProductRepository extends BaseRepository<Product> {
      */
     private async findBatchesByProductId(productId: string): Promise<ProductBatch[]> {
         return this.adapter.query<ProductBatch>('product_batches', {
+            select: '*, supplier:suppliers(name)', // Join supplier information
             where: [{ field: 'product_id', operator: '=', value: productId }],
             orderBy: [{ field: 'received_date', direction: 'desc' }],
         });

@@ -35,7 +35,7 @@ export interface DatabaseAdapter {
 }
 
 export interface QueryOptions {
-    select?: string[];
+    select?: string | string[]; // Support both array and string (for Supabase joins)
     where?: WhereClause[];
     orderBy?: OrderByClause[];
     limit?: number;

@@ -25,7 +25,17 @@ export class SupabaseAdapter implements DatabaseAdapter {
     }
 
     async query<T>(table: string, options: QueryOptions = {}): Promise<T[]> {
-        let query = this.client.from(table).select(options.select?.join(',') || '*');
+        // Handle select - can be array or string (for Supabase joins)
+        let selectClause = '*';
+        if (options.select) {
+            if (Array.isArray(options.select)) {
+                selectClause = options.select.join(',');
+            } else if (typeof options.select === 'string') {
+                selectClause = options.select;
+            }
+        }
+
+        let query = this.client.from(table).select(selectClause);
 
         // Apply where clauses
         if (options.where) {
