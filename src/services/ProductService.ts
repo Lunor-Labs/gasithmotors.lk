@@ -1,0 +1,277 @@
+import { ProductRepository } from '../repositories/ProductRepository';
+import { Product, ProductWithStock } from '../types';
+import { logger } from '../lib/logger';
+
+/**
+ * Product service - handles product business logic
+ */
+export class ProductService {
+    constructor(private productRepo: ProductRepository) { }
+
+    /**
+     * Get all products with stock information
+     */
+    async getAllProducts(): Promise<ProductWithStock[]> {
+        try {
+            logger.info('Fetching all products with stock');
+            const start = Date.now();
+
+            const products = await this.productRepo.findAllWithStock();
+
+            logger.performance('getAllProducts', Date.now() - start, {
+                count: products.length,
+            });
+
+            return products;
+        } catch (error) {
+            logger.error('Failed to fetch products', error as Error);
+            throw new Error('Unable to load products. Please try again.');
+        }
+    }
+
+    /**
+     * Get a single product by ID with stock
+     */
+    async getProductById(id: string): Promise<ProductWithStock | null> {
+        try {
+            logger.debug('Fetching product by ID', { productId: id });
+
+            const product = await this.productRepo.findByIdWithStock(id);
+
+            if (!product) {
+                logger.warn('Product not found', { productId: id });
+            }
+
+            return product;
+        } catch (error) {
+            logger.error('Failed to fetch product', error as Error, { productId: id });
+            throw new Error('Unable to load product details.');
+        }
+    }
+
+    /**
+     * Search products by name
+     */
+    async searchProducts(searchTerm: string): Promise<Product[]> {
+        try {
+            logger.debug('Searching products', { searchTerm });
+
+            if (!searchTerm || searchTerm.trim().length < 2) {
+                return [];
+            }
+
+            const products = await this.productRepo.searchByName(searchTerm.trim());
+
+            logger.debug('Search completed', {
+                searchTerm,
+                resultsCount: products.length,
+            });
+
+            return products;
+        } catch (error) {
+            logger.error('Product search failed', error as Error, { searchTerm });
+            throw new Error('Search failed. Please try again.');
+        }
+    }
+
+    /**
+     * Find product by SKU
+     */
+    async findBySku(sku: string): Promise<Product | null> {
+        try {
+            logger.debug('Finding product by SKU', { sku });
+            return await this.productRepo.findBySku(sku);
+        } catch (error) {
+            logger.error('Failed to find product by SKU', error as Error, { sku });
+            throw new Error('Unable to find product.');
+        }
+    }
+
+    /**
+     * Find product by barcode
+     */
+    async findByBarcode(barcode: string): Promise<Product | null> {
+        try {
+            logger.debug('Finding product by barcode', { barcode });
+            return await this.productRepo.findByBarcode(barcode);
+        } catch (error) {
+            logger.error('Failed to find product by barcode', error as Error, { barcode });
+            throw new Error('Unable to find product.');
+        }
+    }
+
+    /**
+     * Create a new product
+     */
+    async createProduct(productData: Partial<Product>): Promise<Product> {
+        try {
+            logger.info('Creating new product', { name: productData.name, sku: productData.sku });
+
+            // Validate required fields
+            this.validateProductData(productData);
+
+            // Check for duplicate SKU
+            if (productData.sku) {
+                const existing = await this.productRepo.findBySku(productData.sku);
+                if (existing) {
+                    throw new Error(`Product with SKU "${productData.sku}" already exists.`);
+                }
+            }
+
+            // Check for duplicate barcode
+            if (productData.barcode) {
+                const existing = await this.productRepo.findByBarcode(productData.barcode);
+                if (existing) {
+                    throw new Error(`Product with barcode "${productData.barcode}" already exists.`);
+                }
+            }
+
+            const product = await this.productRepo.create({
+                ...productData,
+                active: true,
+                created_at: new Date().toISOString(),
+            });
+
+            logger.info('Product created successfully', {
+                productId: product.id,
+                name: product.name,
+                sku: product.sku,
+            });
+
+            return product;
+        } catch (error) {
+            logger.error('Failed to create product', error as Error, { productData });
+            throw error;
+        }
+    }
+
+    /**
+     * Update an existing product
+     */
+    async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
+        try {
+            logger.info('Updating product', { productId: id });
+
+            // Check if product exists
+            const existing = await this.productRepo.findById(id);
+            if (!existing) {
+                throw new Error('Product not found.');
+            }
+
+            // Validate SKU uniqueness if changing
+            if (updates.sku && updates.sku !== existing.sku) {
+                const duplicate = await this.productRepo.findBySku(updates.sku);
+                if (duplicate && duplicate.id !== id) {
+                    throw new Error(`SKU "${updates.sku}" is already in use.`);
+                }
+            }
+
+            // Validate barcode uniqueness if changing
+            if (updates.barcode && updates.barcode !== existing.barcode) {
+                const duplicate = await this.productRepo.findByBarcode(updates.barcode);
+                if (duplicate && duplicate.id !== id) {
+                    throw new Error(`Barcode "${updates.barcode}" is already in use.`);
+                }
+            }
+
+            const product = await this.productRepo.update(id, {
+                ...updates,
+                updated_at: new Date().toISOString(),
+            });
+
+            logger.info('Product updated successfully', { productId: id });
+
+            return product;
+        } catch (error) {
+            logger.error('Failed to update product', error as Error, { productId: id, updates });
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a product (soft delete by setting active = false)
+     */
+    async deleteProduct(id: string): Promise<void> {
+        try {
+            logger.info('Deleting product', { productId: id });
+
+            const product = await this.productRepo.findByIdWithStock(id);
+            if (!product) {
+                throw new Error('Product not found.');
+            }
+
+            // Check if product has stock
+            if (product.total_stock > 0) {
+                throw new Error('Cannot delete product with existing stock. Please remove all stock first.');
+            }
+
+            await this.productRepo.update(id, {
+                active: false,
+                updated_at: new Date().toISOString(),
+            } as Partial<Product>);
+
+            logger.info('Product deleted successfully', { productId: id });
+        } catch (error) {
+            logger.error('Failed to delete product', error as Error, { productId: id });
+            throw error;
+        }
+    }
+
+    /**
+     * Get low stock products
+     */
+    async getLowStockProducts(threshold: number = 10): Promise<ProductWithStock[]> {
+        try {
+            logger.info('Fetching low stock products', { threshold });
+
+            const products = await this.productRepo.findLowStock(threshold);
+
+            logger.info('Low stock products retrieved', {
+                count: products.length,
+                threshold,
+            });
+
+            return products;
+        } catch (error) {
+            logger.error('Failed to fetch low stock products', error as Error, { threshold });
+            throw new Error('Unable to load low stock products.');
+        }
+    }
+
+    /**
+     * Update product stock
+     */
+    async updateStock(batchId: string, quantity: number): Promise<void> {
+        try {
+            logger.info('Updating product stock', { batchId, quantity });
+
+            if (quantity < 0) {
+                throw new Error('Stock quantity cannot be negative.');
+            }
+
+            await this.productRepo.updateStock(batchId, quantity);
+
+            logger.info('Stock updated successfully', { batchId, quantity });
+        } catch (error) {
+            logger.error('Failed to update stock', error as Error, { batchId, quantity });
+            throw error;
+        }
+    }
+
+    /**
+     * Validate product data
+     */
+    private validateProductData(data: Partial<Product>): void {
+        if (!data.name || data.name.trim().length === 0) {
+            throw new Error('Product name is required.');
+        }
+
+        if (!data.sku || data.sku.trim().length === 0) {
+            throw new Error('SKU is required.');
+        }
+
+        if (data.reorder_level !== undefined && data.reorder_level < 0) {
+            throw new Error('Reorder level cannot be negative.');
+        }
+    }
+}

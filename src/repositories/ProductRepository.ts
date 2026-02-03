@@ -12,24 +12,41 @@ export class ProductRepository extends BaseRepository<Product> {
 
     /**
      * Find all products with their stock batches
+     * Optimized to avoid N+1 query problem
      */
     async findAllWithStock(): Promise<ProductWithStock[]> {
-        // This requires a complex join - we'll use the adapter's query method
-        // For now, we'll fetch products and batches separately
+        // Fetch all active products
         const products = await this.findAll({ active: true });
 
-        const productsWithStock = await Promise.all(
-            products.map(async (product) => {
-                const batches = await this.findBatchesByProductId(product.id);
-                const total_stock = batches.reduce((sum, batch) => sum + batch.current_quantity, 0);
+        if (products.length === 0) {
+            return [];
+        }
 
-                return {
-                    ...product,
-                    batches,
-                    total_stock,
-                } as ProductWithStock;
-            })
-        );
+        // Fetch ALL batches in a single query
+        const allBatches = await this.adapter.query<ProductBatch>('product_batches', {
+            orderBy: [{ field: 'received_date', direction: 'desc' }],
+        });
+
+        // Group batches by product_id in memory
+        const batchesByProduct = new Map<string, ProductBatch[]>();
+        for (const batch of allBatches) {
+            if (!batchesByProduct.has(batch.product_id)) {
+                batchesByProduct.set(batch.product_id, []);
+            }
+            batchesByProduct.get(batch.product_id)!.push(batch);
+        }
+
+        // Combine products with their batches
+        const productsWithStock = products.map((product) => {
+            const batches = batchesByProduct.get(product.id) || [];
+            const total_stock = batches.reduce((sum, batch) => sum + batch.current_quantity, 0);
+
+            return {
+                ...product,
+                batches,
+                total_stock,
+            } as ProductWithStock;
+        });
 
         return productsWithStock;
     }

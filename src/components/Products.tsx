@@ -10,6 +10,8 @@ import { ProductForm } from './products/ProductForm';
 import { ProductDetailsView } from './products/ProductDetailsView';
 import { ProductImporter } from './products/ProductImporter';
 import { Upload, Filter } from 'lucide-react';
+import { productService } from '../services';
+import { logger } from '../lib/logger';
 
 export function Products() {
   const { isAdmin } = useAuth();
@@ -212,31 +214,23 @@ export function Products() {
 
     try {
       if (modalMode === 'add') {
-        const { data: newProduct, error } = await supabase
-          .from('products')
-          .insert([
-            {
-              sku: formData.sku,
-              barcode: formData.barcode || null,
-              name: formData.name,
-              description: formData.description || null,
-              category: formData.category || null,
-              unit: formData.unit,
-              reorder_level: formData.reorder_level,
-              image_url: formData.image_url || null,
-            },
-          ] as any)
-          .select()
-          .single();
-
-        if (error) throw error;
+        // Use ProductService to create product
+        const newProduct = await productService.createProduct({
+          sku: formData.sku,
+          barcode: formData.barcode || null,
+          name: formData.name,
+          description: formData.description || null,
+          category: formData.category || null,
+          unit: formData.unit,
+          reorder_level: formData.reorder_level,
+          image_url: formData.image_url || null,
+        });
 
         // Create initial batch if stock info provided
-        if (formData.initial_quantity > 0 && formData.supplier_id && newProduct) {
-          const product = newProduct as any;
-          const batchNumber = `INIT-${product.sku}-${new Date().getTime().toString().slice(-4)}`;
+        if (formData.initial_quantity > 0 && formData.supplier_id) {
+          const batchNumber = `INIT-${newProduct.sku}-${new Date().getTime().toString().slice(-4)}`;
           const { error: batchError } = await supabase.from('product_batches').insert({
-            product_id: product.id,
+            product_id: newProduct.id,
             batch_number: batchNumber,
             supplier_id: formData.supplier_id,
             cost_price: formData.cost_price,
@@ -252,27 +246,25 @@ export function Products() {
 
         alert('Product added successfully!');
       } else if (modalMode === 'edit' && selectedProduct) {
-        const { error } = await (supabase
-          .from('products') as any)
-          .update({
-            sku: formData.sku,
-            barcode: formData.barcode || null,
-            name: formData.name,
-            description: formData.description || null,
-            category: formData.category || null,
-            unit: formData.unit,
-            reorder_level: formData.reorder_level,
-            image_url: formData.image_url || null,
-          } as any)
-          .eq('id', selectedProduct.id);
+        // Use ProductService to update product
+        await productService.updateProduct(selectedProduct.id, {
+          sku: formData.sku,
+          barcode: formData.barcode || null,
+          name: formData.name,
+          description: formData.description || null,
+          category: formData.category || null,
+          unit: formData.unit,
+          reorder_level: formData.reorder_level,
+          image_url: formData.image_url || null,
+        });
 
-        if (error) throw error;
         alert('Product updated successfully!');
       }
 
       closeModal();
       refetch();
     } catch (error: any) {
+      logger.error('Product form submission failed', error);
       alert(error.message);
     }
   }
