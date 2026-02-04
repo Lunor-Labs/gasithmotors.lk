@@ -86,7 +86,7 @@ export function useProducts(
 
         switch (searchType) {
           case 'sku':
-            collection = db.products.where('sku').startsWithIgnoreCase(query);
+            collection = db.products.filter(p => p.sku.toLowerCase() === query);
             break;
           case 'barcode':
             collection = db.products.where('barcode').equals(query);
@@ -107,7 +107,7 @@ export function useProducts(
             } else {
               collection = db.products.filter(p =>
                 p.name.toLowerCase().includes(query) ||
-                p.sku.toLowerCase().includes(query) ||
+                p.sku.toLowerCase() === query ||
                 (typeof p.barcode === 'string' && p.barcode.includes(query))
               );
             }
