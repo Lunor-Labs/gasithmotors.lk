@@ -15,6 +15,9 @@ export interface CreateSaleInput {
         quantity: number;
         unit_price: number;
         cost_price: number;
+        warranty_duration?: number;
+        warranty_unit?: 'days' | 'months' | 'years';
+        warranty_type?: string;
     }>;
     payment_method: 'cash' | 'card' | 'credit' | 'mixed';
     subtotal: number;
@@ -92,6 +95,9 @@ export class SalesService {
                 unit_price: item.unit_price,
                 cost_price: item.cost_price,
                 subtotal: item.quantity * item.unit_price,
+                warranty_duration: item.warranty_duration || 0,
+                warranty_unit: item.warranty_unit || null,
+                warranty_type: item.warranty_type || null,
             }));
 
             // Deduct stock levels

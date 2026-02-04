@@ -7,6 +7,11 @@ export interface InvoiceItem {
   unitPrice: number;
   subtotal: number;
   batchNumber: string;
+  warranty?: {
+    duration: number;
+    unit: 'days' | 'months' | 'years';
+    type?: string;
+  };
 }
 
 export interface InvoiceData {
@@ -55,6 +60,9 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
     invoiceData.items.forEach((item, index) => {
       message += `${index + 1}. ${item.name} ${item.batchNumber ? `(Batch: ${item.batchNumber})` : ''}\n`;
+      if (item.warranty && item.warranty.duration > 0) {
+        message += `   Warranty: ${item.warranty.duration} ${item.warranty.unit} ${item.warranty.type ? `(${item.warranty.type})` : ''}\n`;
+      }
       message += `   ${item.quantity} x ${item.unitPrice.toFixed(2)} = LKR ${item.subtotal.toFixed(2)}\n\n`;
     });
 
@@ -176,9 +184,16 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                         <td className="py-3 text-sm text-slate-600">{index + 1}</td>
                         <td className="py-3">
                           <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                          {item.batchNumber && (
-                            <p className="text-xs text-slate-500">Batch: {item.batchNumber}</p>
-                          )}
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                            {item.batchNumber && (
+                              <p className="text-xs text-slate-500">Batch: {item.batchNumber}</p>
+                            )}
+                            {item.warranty && item.warranty.duration > 0 && (
+                              <p className="text-xs font-medium text-blue-600">
+                                Warranty: {item.warranty.duration} {item.warranty.unit} {item.warranty.type ? `(${item.warranty.type})` : ''}
+                              </p>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 text-sm text-slate-600 text-center">{item.quantity}</td>
                         <td className="py-3 text-sm text-slate-600 text-right">

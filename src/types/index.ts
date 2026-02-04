@@ -33,4 +33,7 @@ export interface CartItem {
   quantity: number;
   price: number; // The actual selling price (editable)
   original_price: number; // The base selling price from batch
+  warranty_duration?: number;
+  warranty_unit?: 'days' | 'months' | 'years';
+  warranty_type?: string;
 }

@@ -339,6 +339,14 @@ export function POS() {
     setCart(newCart);
   }
 
+  function updateCartItemWarranty(index: number, warranty: { duration: number; unit: 'days' | 'months' | 'years'; type: string }) {
+    const newCart = [...cart];
+    newCart[index].warranty_duration = warranty.duration;
+    newCart[index].warranty_unit = warranty.unit;
+    newCart[index].warranty_type = warranty.type;
+    setCart(newCart);
+  }
+
   function removeFromCart(index: number) {
     setCart(cart.filter((_, i) => i !== index));
   }
@@ -467,6 +475,9 @@ export function POS() {
           quantity: item.quantity,
           unit_price: item.price,
           cost_price: item.batch.cost_price,
+          warranty_duration: item.warranty_duration,
+          warranty_unit: item.warranty_unit,
+          warranty_type: item.warranty_type,
         })),
         payment_method: paymentMethod,
         subtotal: effectiveSubtotal,
@@ -489,6 +500,11 @@ export function POS() {
           unitPrice: item.price,
           subtotal: item.price * item.quantity,
           batchNumber: item.batch.batch_number,
+          warranty: item.warranty_duration ? {
+            duration: item.warranty_duration,
+            unit: item.warranty_unit || 'months',
+            type: item.warranty_type
+          } : undefined,
         })),
         subtotal: effectiveSubtotal,
         discount: itemLevelDiscount,
@@ -532,6 +548,9 @@ export function POS() {
             subtotal: item.price * item.quantity,
             total_price: item.price * item.quantity,
             cost_price: item.batch.cost_price,
+            warranty_duration: item.warranty_duration,
+            warranty_unit: item.warranty_unit,
+            warranty_type: item.warranty_type,
           })),
           batches: cart.map(item => ({
             id: item.batch.id,
@@ -578,7 +597,12 @@ export function POS() {
             quantity: item.quantity,
             unitPrice: item.price,
             subtotal: item.price * item.quantity,
-            batchNumber: item.batch.batch_number
+            batchNumber: item.batch.batch_number,
+            warranty: item.warranty_duration ? {
+              duration: item.warranty_duration,
+              unit: item.warranty_unit || 'months',
+              type: item.warranty_type
+            } : undefined,
           })),
           subtotal: effectiveSubtotal,
           discount: itemLevelDiscount,
@@ -899,6 +923,7 @@ export function POS() {
                   items={cart}
                   onUpdateQuantity={updateCartItemQuantity}
                   onUpdatePrice={updateCartItemPrice}
+                  onUpdateWarranty={updateCartItemWarranty}
                   onRemoveItem={removeFromCart}
                 />
               </div>
