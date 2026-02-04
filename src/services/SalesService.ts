@@ -1,5 +1,6 @@
 import { SaleRepository, SaleWithItems } from '../repositories/SaleRepository';
 import { CustomerRepository } from '../repositories/CustomerRepository';
+import { ProductRepository } from '../repositories/ProductRepository';
 import { Sale, SaleItem } from '../types';
 import { logger } from '../lib/logger';
 
@@ -29,7 +30,8 @@ export interface CreateSaleInput {
 export class SalesService {
     constructor(
         private saleRepo: SaleRepository,
-        private customerRepo: CustomerRepository
+        private customerRepo: CustomerRepository,
+        private productRepo: ProductRepository
     ) { }
 
     /**
@@ -292,6 +294,79 @@ export class SalesService {
             throw new Error(
                 `Credit limit exceeded. Available credit: LKR ${(customer.credit_limit - customer.current_credit).toFixed(2)}`
             );
+        }
+    }
+
+    /**
+     * Delete a sale and reverse its effects
+     */
+    async deleteSale(saleId: string): Promise<void> {
+        try {
+            logger.info('Deleting sale', { saleId });
+
+            // 1. Get sale with items
+            const sale = await this.saleRepo.findByIdWithItems(saleId);
+            if (!sale) {
+                throw new Error('Sale not found.');
+            }
+
+            // 2. Check for associated returns
+            const adapter = (this.saleRepo as any).adapter;
+            const returns = await adapter.query('returns', {
+                where: [{ field: 'sale_id', operator: '=', value: saleId }]
+            });
+
+            if (returns.length > 0) {
+                throw new Error('Cannot delete a sale that has associated returns. Please handle returns first.');
+            }
+
+            // 3. Restore stock levels
+            for (const item of sale.items) {
+                // Get current batch to know current quantity
+                const client = (this.productRepo as any).adapter.getClient();
+                const { data: batch, error } = await client
+                    .from('product_batches')
+                    .select('current_quantity')
+                    .eq('id', item.batch_id)
+                    .single();
+
+                if (error) {
+                    logger.error(`Failed to fetch batch ${item.batch_id} for stock restoration`, error);
+                    continue;
+                }
+
+                if (batch) {
+                    const newQuantity = batch.current_quantity + item.quantity;
+                    await this.productRepo.updateStock(item.batch_id, newQuantity);
+                    logger.debug('Restored stock for item', {
+                        productId: item.product_id,
+                        batchId: item.batch_id,
+                        addedQuantity: item.quantity,
+                        newQuantity
+                    });
+                }
+            }
+
+            // 3. Reverse customer credit if applicable
+            if (sale.customer_id && (sale.status === 'credit' || sale.status === 'partial')) {
+                const creditAmount = sale.total_amount - sale.paid_amount;
+                if (creditAmount > 0) {
+                    await this.customerRepo.updateCredit(sale.customer_id, -creditAmount);
+                    logger.info('Reversed customer credit', {
+                        customerId: sale.customer_id,
+                        amount: creditAmount,
+                    });
+                }
+            }
+
+            // 4. Delete the sale and items
+            logger.info('Calling repository to delete sale and items', { saleId });
+            await this.saleRepo.deleteWithItems(saleId);
+
+            logger.info('Sale deleted successfully from database', { saleId });
+        } catch (error) {
+            logger.error('Failed to delete sale', error as Error, { saleId });
+            throw error;
         }
     }
 

@@ -157,4 +157,29 @@ export class SaleRepository extends BaseRepository<Sale> {
             completedSales: sales.filter(s => s.status === 'completed').length,
         };
     }
+
+    /**
+     * Delete sale and its items
+     */
+    async deleteWithItems(id: string): Promise<void> {
+        const client = (this.adapter as any).getClient();
+
+        // 1. Delete associated referral commissions
+        const { error: commError } = await client.from('referral_commissions').delete().eq('sale_id', id);
+        if (commError) {
+            throw new Error(`Failed to delete referral commissions: ${commError.message}`);
+        }
+
+        // 2. Delete sale items
+        const { error: itemError } = await client.from('sale_items').delete().eq('sale_id', id);
+        if (itemError) {
+            throw new Error(`Failed to delete sale items: ${itemError.message}`);
+        }
+
+        // 3. Delete the sale itself
+        const { error: saleError } = await client.from('sales').delete().eq('id', id);
+        if (saleError) {
+            throw new Error(`Failed to delete sale record: ${saleError.message}`);
+        }
+    }
 }

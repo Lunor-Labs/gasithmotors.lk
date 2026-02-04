@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
 import { Invoice, InvoiceData } from './Invoice';
-import { Search, Eye, FileText, X } from 'lucide-react';
+import { Search, Eye, FileText, X, Trash2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { salesService } from '../services';
 
 type Sale = Database['public']['Tables']['sales']['Row'] & {
     cashier?: { full_name: string } | null;
@@ -15,9 +17,10 @@ type SaleItem = Database['public']['Tables']['sale_items']['Row'] & {
 };
 
 export function SalesHistory() {
-    // const { profile } = useAuth(); // Unused
+    const { isAdmin } = useAuth();
     const [sales, setSales] = useState<Sale[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [dateRange, setDateRange] = useState({
         start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0], // Last 30 days
@@ -108,6 +111,27 @@ export function SalesHistory() {
         sale.sale_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (sale.customer?.name && sale.customer.name.toLowerCase().includes(searchTerm.toLowerCase()))
     );
+
+    async function handleDeleteSale(saleId: string) {
+        if (!window.confirm('Are you sure you want to delete this sale? This will restore stock levels and reverse customer credit. This action cannot be undone.')) {
+            return;
+        }
+
+        setDeletingId(saleId);
+        try {
+            await salesService.deleteSale(saleId);
+            // Update local state immediately for better UX
+            setSales(prev => prev.filter(s => s.id !== saleId));
+
+            // Re-sync with database
+            await loadSales();
+        } catch (error) {
+            console.error('Error deleting sale:', error);
+            alert(error instanceof Error ? error.message : 'Failed to delete sale');
+        } finally {
+            setDeletingId(null);
+        }
+    }
 
     function handleGenerateInvoice() {
         if (!selectedSale || !saleItems.length) return;
@@ -254,13 +278,29 @@ export function SalesHistory() {
                                             {sale.cashier?.full_name || 'System'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <button
-                                                onClick={() => openSaleDetails(sale)}
-                                                className="p-1.5 hover:bg-slate-100 rounded-lg transition text-blue-600 hover:text-blue-700"
-                                                title="View Details"
-                                            >
-                                                <Eye className="w-5 h-5" />
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => openSaleDetails(sale)}
+                                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition text-blue-600 hover:text-blue-700"
+                                                    title="View Details"
+                                                >
+                                                    <Eye className="w-5 h-5" />
+                                                </button>
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => handleDeleteSale(sale.id)}
+                                                        disabled={deletingId === sale.id}
+                                                        className="p-1.5 hover:bg-red-50 rounded-lg transition text-red-600 hover:text-red-700 disabled:opacity-50"
+                                                        title="Delete Sale"
+                                                    >
+                                                        {deletingId === sale.id ? (
+                                                            <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                                                        ) : (
+                                                            <Trash2 className="w-5 h-5" />
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
