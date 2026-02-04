@@ -27,6 +27,7 @@ export interface CreateSaleInput {
     paid_amount: number;
     notes?: string;
     referral_commission_rate?: number;
+    service_charge?: number;
 }
 
 /**
@@ -85,6 +86,7 @@ export class SalesService {
                 paid_amount: input.paid_amount,
                 status,
                 notes: input.notes || null,
+                service_charge: input.service_charge || 0,
             };
 
             // Prepare sale items
@@ -117,15 +119,16 @@ export class SalesService {
                 });
             }
 
-            // Create referral commission if agent provided
+            // Create referral commission if agent provided (exclude service charge)
             if (input.referral_agent_id && input.referral_commission_rate !== undefined) {
-                const commissionAmount = input.total_amount * (input.referral_commission_rate / 100);
+                const commissionableAmount = input.total_amount - (input.service_charge || 0);
+                const commissionAmount = commissionableAmount * (input.referral_commission_rate / 100);
                 await this.saleRepo.createCommission({
                     referral_agent_id: input.referral_agent_id,
                     sale_id: sale.id,
                     commission_amount: commissionAmount,
                     commission_rate: input.referral_commission_rate,
-                    sale_amount: input.total_amount,
+                    sale_amount: commissionableAmount,
                 });
 
                 logger.info('Referral commission created', {

@@ -343,6 +343,7 @@ export interface Database {
           cashier_id: string | null
           created_at: string
           updated_at: string
+          service_charge: number
         }
         Insert: {
           id?: string

@@ -55,6 +55,7 @@ export function POS() {
   const [taxRate, setTaxRate] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'credit' | 'mixed'>('cash');
   const [paidAmount, setPaidAmount] = useState(0);
+  const [serviceCharge, setServiceCharge] = useState(0);
   const [processing, setProcessing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -356,6 +357,7 @@ export function POS() {
     setSelectedCustomer(null);
     setSelectedReferralAgent(null);
     setPaidAmount(0);
+    setServiceCharge(0);
     setPaymentMethod('cash');
   }
 
@@ -367,7 +369,7 @@ export function POS() {
   // discountAmount is no longer used for global discount, simplifying math
   const taxBase = effectiveSubtotal;
   const taxAmount = taxBase * (taxRate / 100);
-  const total = taxBase + taxAmount;
+  const total = taxBase + taxAmount + serviceCharge;
   const changeAmount = paidAmount - total;
 
 
@@ -486,6 +488,7 @@ export function POS() {
         total_amount: total,
         paid_amount: paidAmount,
         referral_commission_rate: selectedReferralAgent?.commission_rate,
+        service_charge: serviceCharge,
       });
 
       // Prepare invoice data
@@ -512,6 +515,7 @@ export function POS() {
         total,
         paidAmount,
         changeAmount,
+        serviceCharge,
         paymentMethod,
         cashierName: profile?.full_name || 'Cashier',
       });
@@ -538,6 +542,7 @@ export function POS() {
             total_amount: total,
             payment_method: paymentMethod,
             paid_amount: paidAmount,
+            service_charge: serviceCharge,
             status: paymentMethod === 'credit' ? (paidAmount > 0 ? 'partial' : 'credit') : 'completed',
           },
           items: cart.map((item) => ({
@@ -562,9 +567,9 @@ export function POS() {
           } : null,
           commission: selectedReferralAgent ? {
             referral_agent_id: selectedReferralAgent.id,
-            commission_amount: total * (selectedReferralAgent.commission_rate / 100),
+            commission_amount: (total - serviceCharge) * (selectedReferralAgent.commission_rate / 100),
             commission_rate: selectedReferralAgent.commission_rate,
-            sale_amount: total,
+            sale_amount: total - serviceCharge,
           } : null
         };
 
@@ -607,6 +612,7 @@ export function POS() {
           subtotal: effectiveSubtotal,
           discount: itemLevelDiscount,
           tax: taxAmount,
+          serviceCharge,
           total: total,
           paidAmount: paidAmount,
           changeAmount: Math.max(0, paidAmount - total),
@@ -859,6 +865,19 @@ export function POS() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Service / Support Charge</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={serviceCharge === 0 ? '' : serviceCharge}
+                  onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
                 </label>
@@ -888,6 +907,12 @@ export function POS() {
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Tax ({taxRate}%):</span>
                     <span className="font-medium text-slate-900">LKR {taxAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                {serviceCharge > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Service Charge:</span>
+                    <span className="font-medium text-slate-900">LKR {serviceCharge.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">

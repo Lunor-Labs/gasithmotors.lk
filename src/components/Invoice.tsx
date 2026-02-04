@@ -26,6 +26,7 @@ export interface InvoiceData {
   total: number;
   paidAmount: number;
   changeAmount: number;
+  serviceCharge?: number;
   paymentMethod: string;
   cashierName?: string;
 }
@@ -69,10 +70,11 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
     message += `--------------------------------\n`;
 
     // Summary details (Subtotal, Discount, Tax)
-    if (invoiceData.discount > 0 || invoiceData.tax > 0) {
+    if (invoiceData.discount > 0 || invoiceData.tax > 0 || (invoiceData.serviceCharge && invoiceData.serviceCharge > 0)) {
       message += `Subtotal: LKR ${invoiceData.subtotal.toFixed(2)}\n`;
       if (invoiceData.discount > 0) message += `Discount: -LKR ${invoiceData.discount.toFixed(2)}\n`;
       if (invoiceData.tax > 0) message += `Tax: LKR ${invoiceData.tax.toFixed(2)}\n`;
+      if (invoiceData.serviceCharge && invoiceData.serviceCharge > 0) message += `Service Charge: LKR ${invoiceData.serviceCharge.toFixed(2)}\n`;
       message += `\n`;
     }
 
@@ -229,6 +231,14 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                       <span className="text-slate-600">Tax:</span>
                       <span className="font-medium text-slate-900">
                         LKR {invoiceData.tax.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {invoiceData.serviceCharge !== undefined && invoiceData.serviceCharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Service Charge:</span>
+                      <span className="font-medium text-slate-900">
+                        LKR {invoiceData.serviceCharge.toFixed(2)}
                       </span>
                     </div>
                   )}
