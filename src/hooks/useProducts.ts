@@ -1,11 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
 import { ProductWithBatches } from '../types';
 import { db } from '../lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { productService } from '../services';
+import { logger } from '../lib/logger';
 
 export type SearchType = 'all' | 'name' | 'sku' | 'barcode';
 
+/**
+ * Hook for managing products with offline support
+ * Uses ProductService for data access and IndexedDB for offline caching
+ */
 export function useProducts(
   page: number = 1,
   pageSize: number = 20,
@@ -16,93 +21,51 @@ export function useProducts(
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
-  // Sync Products from Supabase to IndexedDB
+  /**
+   * Sync products from database to IndexedDB for offline use
+   */
   const syncProducts = useCallback(async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine) {
+      logger.debug('Skipping sync - offline');
+      return;
+    }
 
     try {
       setSyncStatus('syncing');
+      logger.info('Starting product sync');
 
-      const CHUNK_SIZE = 1000;
+      // Use ProductService to fetch all products
+      const products = await productService.getAllProducts();
 
-      // 1. Fetch all active products in chunks
-      let allProducts: any[] = [];
-      let hasMoreProducts = true;
-      let fromProduct = 0;
+      // Convert to ProductWithBatches format for IndexedDB
+      const productsWithBatches: ProductWithBatches[] = products.map(product => ({
+        ...product,
+        batches: product.batches || [],
+        total_stock: product.total_stock || 0,
+      }));
 
-      while (hasMoreProducts) {
-        const { data: productsData, error: productsError } = await supabase
-          .from('products')
-          .select('*')
-          .eq('active', true)
-          .range(fromProduct, fromProduct + CHUNK_SIZE - 1);
-
-        if (productsError) throw productsError;
-        const products = productsData || [];
-        allProducts = [...allProducts, ...products];
-
-        if (products.length < CHUNK_SIZE) {
-          hasMoreProducts = false;
-        } else {
-          fromProduct += CHUNK_SIZE;
-        }
-      }
-
-      // 2. Fetch all batches in chunks
-      let allBatches: any[] = [];
-      let hasMoreBatches = true;
-      let fromBatch = 0;
-
-      while (hasMoreBatches) {
-        const { data: batchesData, error: batchesError } = await (supabase
-          .from('product_batches') as any)
-          .select('*, supplier:suppliers(name)')
-          .range(fromBatch, fromBatch + CHUNK_SIZE - 1);
-
-        if (batchesError) throw batchesError;
-        const batches = (batchesData || []) as any[];
-        allBatches = [...allBatches, ...batches];
-
-        if (batches.length < CHUNK_SIZE) {
-          hasMoreBatches = false;
-        } else {
-          fromBatch += CHUNK_SIZE;
-        }
-      }
-
-      // 3. Merge Batches into Products
-      const productsWithBatches: ProductWithBatches[] = allProducts.map(product => {
-        const productBatches = allBatches
-          .filter(b => b.product_id === product.id)
-          .sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime());
-
-        const totalStock = productBatches.reduce((sum, b) => sum + (b.current_quantity || 0), 0);
-
-        return {
-          ...product,
-          batches: productBatches,
-          total_stock: totalStock,
-        };
-      });
-
-      // 4. Update IndexedDB - Clear first to remove any inactive products
+      // Update IndexedDB - clear first to remove inactive products
       await db.products.clear();
       await db.products.bulkPut(productsWithBatches);
 
       setSyncStatus('idle');
+      logger.info('Product sync completed', { count: products.length });
     } catch (err) {
-      console.error('Sync failed:', err);
+      logger.error('Product sync failed', err as Error);
       setSyncStatus('error');
       setError('Sync failed, but you can still use offline data.');
     }
   }, []);
 
-  // Initial Sync on Mount
+  /**
+   * Initial sync on mount
+   */
   useEffect(() => {
     const checkInitialLoad = async () => {
       const count = await db.products.count();
       if (count === 0) {
         setLoading(true);
+        logger.info('No cached products, performing initial sync');
       }
       await syncProducts();
       setLoading(false);
@@ -110,18 +73,20 @@ export function useProducts(
     checkInitialLoad();
   }, [syncProducts]);
 
-  // Query Local Database
+  /**
+   * Query local IndexedDB with live updates
+   */
   const queryResult = useLiveQuery(async () => {
     try {
       let collection = db.products.toCollection();
 
-      // Apply Search Filters
+      // Apply search filters
       if (searchQuery.trim()) {
         const query = searchQuery.trim().toLowerCase();
 
         switch (searchType) {
           case 'sku':
-            collection = db.products.where('sku').startsWithIgnoreCase(query);
+            collection = db.products.filter(p => p.sku.toLowerCase() === query);
             break;
           case 'barcode':
             collection = db.products.where('barcode').equals(query);
@@ -142,7 +107,7 @@ export function useProducts(
             } else {
               collection = db.products.filter(p =>
                 p.name.toLowerCase().includes(query) ||
-                p.sku.toLowerCase().includes(query) ||
+                p.sku.toLowerCase() === query ||
                 (typeof p.barcode === 'string' && p.barcode.includes(query))
               );
             }
@@ -160,7 +125,7 @@ export function useProducts(
 
       return { products: data, totalCount: count };
     } catch (err) {
-      console.error('Local query failed:', err);
+      logger.error('Local product query failed', err as Error);
       return { products: [], totalCount: 0 };
     }
   }, [page, pageSize, searchQuery, searchType]);

@@ -17,6 +17,8 @@ import { CartItemsList } from './pos/CartItemsList';
 
 import { db } from '../lib/db';
 import { SyncStatus } from './pos/SyncStatus';
+import { salesService } from '../services';
+import { logger } from '../lib/logger';
 
 export function POS() {
   const { profile } = useAuth();
@@ -454,90 +456,30 @@ export function POS() {
     setProcessing(true);
 
     try {
-      const saleNumber = `SALE-${Date.now()} `;
-      // For credit sales, actualPaidAmount is what they paid now (partial). For others, it's the full paidAmount.
-      const actualPaidAmount = paidAmount;
+      // Use SalesService to create the sale
+      const sale = await salesService.createSale({
+        customer_id: selectedCustomer?.id || null,
+        cashier_id: profile?.id || '',
+        referral_agent_id: selectedReferralAgent?.id || null,
+        items: cart.map((item) => ({
+          product_id: item.product.id,
+          batch_id: item.batch.id,
+          quantity: item.quantity,
+          unit_price: item.price,
+          cost_price: item.batch.cost_price,
+        })),
+        payment_method: paymentMethod,
+        subtotal: effectiveSubtotal,
+        discount_amount: itemLevelDiscount,
+        tax_amount: taxAmount,
+        total_amount: total,
+        paid_amount: paidAmount,
+        referral_commission_rate: selectedReferralAgent?.commission_rate,
+      });
 
-      let status: 'completed' | 'partial' | 'credit' = 'completed';
-      if (paymentMethod === 'credit') {
-        if (actualPaidAmount >= total) status = 'completed';
-        else if (actualPaidAmount > 0) status = 'partial';
-        else status = 'credit';
-      }
-
-      const { data: saleData, error: saleError } = await (supabase.from('sales') as any)
-        .insert({
-          sale_number: saleNumber,
-          customer_id: selectedCustomer?.id || null,
-          referral_agent_id: selectedReferralAgent?.id || null,
-          user_id: profile?.id,
-          sale_date: new Date().toISOString(),
-          subtotal: effectiveSubtotal,
-          discount_amount: itemLevelDiscount,
-          tax_rate: taxRate,
-          tax_amount: taxAmount,
-          total_amount: total,
-          payment_method: paymentMethod,
-          paid_amount: actualPaidAmount,
-          status,
-        })
-        .select()
-        .single();
-      const sData = saleData as any;
-
-      if (saleError) throw saleError;
-
-      const saleItems = cart.map((item) => ({
-        sale_id: sData.id,
-        product_id: item.product.id,
-        batch_id: item.batch.id,
-        quantity: item.quantity,
-        unit_price: item.price,
-        subtotal: item.price * item.quantity,
-        total_price: item.price * item.quantity,
-        cost_price: item.batch.cost_price,
-      }));
-
-      const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
-
-      if (itemsError) throw itemsError;
-
-      for (const item of cart) {
-        const newQuantity = item.batch.current_quantity - item.quantity;
-        const { error: batchError } = await (supabase
-          .from('product_batches') as any)
-          .update({ current_quantity: newQuantity })
-          .eq('id', item.batch.id);
-
-        if (batchError) throw batchError;
-      }
-
-      // Only add the UNPAID amount to the customer's credit balance
-      if (paymentMethod === 'credit' && selectedCustomer && creditAmount > 0) {
-        const { error: creditError } = await (supabase
-          .from('customers') as any)
-          .update({ current_credit: selectedCustomer.current_credit + creditAmount })
-          .eq('id', selectedCustomer.id);
-
-        if (creditError) throw creditError;
-      }
-
-      if (selectedReferralAgent) {
-        const commissionAmount = total * (selectedReferralAgent.commission_rate / 100);
-        const { error: commissionError } = await (supabase.from('referral_commissions') as any)
-          .insert({
-            referral_agent_id: selectedReferralAgent.id,
-            sale_id: sData.id,
-            commission_amount: commissionAmount,
-            commission_rate: selectedReferralAgent.commission_rate,
-            sale_amount: total,
-          });
-
-        if (commissionError) throw commissionError;
-      }
-
+      // Prepare invoice data
       setInvoiceData({
-        saleNumber,
+        saleNumber: sale.sale_number,
         date: new Date().toLocaleDateString(),
         customerName: selectedCustomer?.name || 'Walk-in Customer',
         customerPhone: selectedCustomer?.phone,
@@ -552,7 +494,7 @@ export function POS() {
         discount: itemLevelDiscount,
         tax: taxAmount,
         total,
-        paidAmount: actualPaidAmount,
+        paidAmount,
         changeAmount,
         paymentMethod,
         cashierName: profile?.full_name || 'Cashier',
@@ -654,6 +596,7 @@ export function POS() {
         return;
       }
 
+      logger.error('Sale completion failed', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to complete sale';
       alert(`Error completing sale: ${errorMessage} `);
     } finally {
