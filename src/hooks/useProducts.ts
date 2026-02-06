@@ -6,6 +6,7 @@ import { productService } from '../services';
 import { logger } from '../lib/logger';
 
 export type SearchType = 'all' | 'name' | 'sku' | 'barcode';
+export type StockFilter = 'all' | 'low_stock' | 'out_of_stock';
 
 /**
  * Hook for managing products with offline support
@@ -15,7 +16,8 @@ export function useProducts(
   page: number = 1,
   pageSize: number = 20,
   searchQuery: string = '',
-  searchType: SearchType = 'all'
+  searchType: SearchType = 'all',
+  stockFilter: StockFilter = 'all'
 ) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +117,13 @@ export function useProducts(
         }
       }
 
+      // Apply stock status filters
+      if (stockFilter === 'low_stock') {
+        collection = collection.filter(p => (p.total_stock || 0) > 0 && (p.total_stock || 0) <= (p.reorder_level || 0));
+      } else if (stockFilter === 'out_of_stock') {
+        collection = collection.filter(p => (p.total_stock || 0) === 0);
+      }
+
       // Pagination
       const count = await collection.count();
       const offset = (page - 1) * pageSize;
@@ -128,7 +137,7 @@ export function useProducts(
       logger.error('Local product query failed', err as Error);
       return { products: [], totalCount: 0 };
     }
-  }, [page, pageSize, searchQuery, searchType]);
+  }, [page, pageSize, searchQuery, searchType, stockFilter]);
 
   return {
     products: queryResult?.products || [],

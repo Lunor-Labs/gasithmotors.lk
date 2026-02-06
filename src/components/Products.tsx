@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useProducts, SearchType } from '../hooks/useProducts';
+import { useProducts, SearchType, StockFilter } from '../hooks/useProducts';
 import { ProductWithStock } from '../types';
 import { BarcodeGenerator } from './BarcodeGenerator';
 import { ProductTable } from './products/ProductTable';
@@ -20,8 +20,9 @@ export function Products() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
 
-  const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch, searchType);
+  const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch, searchType, stockFilter);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -354,21 +355,37 @@ export function Products() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <select
-                value={searchType}
-                onChange={(e) => setSearchType(e.target.value as SearchType)}
-                className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
-              >
-                <option value="all">Smart Search</option>
-                <option value="name">Name Only</option>
-                <option value="sku">SKU Only</option>
-                <option value="barcode">Barcode</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-                <Filter className="w-4 h-4" />
-              </div>
+          <div className="relative">
+            <select
+              value={stockFilter}
+              onChange={(e) => {
+                setPage(1);
+                setStockFilter(e.target.value as StockFilter);
+              }}
+              className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+            >
+              <option value="all">All Stock</option>
+              <option value="low_stock">Low Stock</option>
+              <option value="out_of_stock">Out of Stock</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+              <Filter className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="relative">
+            <select
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value as SearchType)}
+              className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+            >
+              <option value="all">Smart Search</option>
+              <option value="name">Name Only</option>
+              <option value="sku">SKU Only</option>
+              <option value="barcode">Barcode</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+              <Filter className="w-4 h-4" />
             </div>
           </div>
         </div>

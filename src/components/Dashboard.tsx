@@ -9,6 +9,7 @@ interface DashboardStats {
   todaySales: number;
   todayRevenue: number;
   lowStockProducts: number;
+  outOfStockProducts: number;
   pendingReturns: number;
 }
 
@@ -19,12 +20,16 @@ export function Dashboard() {
     todaySales: 0,
     todayRevenue: 0,
     lowStockProducts: 0,
+    outOfStockProducts: 0,
     pendingReturns: 0,
   });
   const [loading, setLoading] = useState(true);
   const [salesData, setSalesData] = useState<any[]>([]);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);
+  const [outOfStockItems, setOutOfStockItems] = useState<any[]>([]);
+  const [activeStockTab, setActiveStockTab] = useState<'low' | 'out'>('low');
+  const [topSellingItems, setTopSellingItems] = useState<any[]>([]);
 
   useEffect(() => {
     loadDashboardStats();
@@ -41,7 +46,8 @@ export function Dashboard() {
         { data: lowStockData },
         { count: pendingReturnsCount },
         { data: recentSalesData },
-        { data: salesHistory }
+        { data: salesHistory },
+        { data: saleItemsData }
       ] = await Promise.all([
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('active', true),
         supabase.from('customers').select('*', { count: 'exact', head: true }).eq('active', true),
@@ -52,14 +58,19 @@ export function Dashboard() {
           .eq('products.active', true),
         supabase.from('returns').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('sales').select('*, customers(name)').order('created_at', { ascending: false }).limit(5),
-        supabase.from('sales').select('created_at, total_amount').order('created_at', { ascending: true }).limit(50)
+        supabase.from('sales').select('created_at, total_amount').order('created_at', { ascending: true }).limit(50),
+        supabase.from('sale_items').select('quantity, products(name)').gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
       ]);
 
       // Cast to any to avoid strict type checking issues with complex joins for now
       const todayRevenue = (todaySalesData as any[])?.reduce((sum, sale) => sum + Number(sale.total_amount), 0) || 0;
 
       const lowStockList = (lowStockData as any[] || []).filter((batch: any) => {
-        return batch.current_quantity <= (batch.products?.reorder_level || 0);
+        return batch.current_quantity > 0 && batch.current_quantity <= (batch.products?.reorder_level || 0);
+      });
+
+      const outOfStockList = (lowStockData as any[] || []).filter((batch: any) => {
+        return batch.current_quantity === 0;
       });
 
       // Process chart data
@@ -68,9 +79,29 @@ export function Dashboard() {
         value: Number(sale.total_amount)
       }));
 
+      // Process top selling items
+      const itemMap = new Map<string, number>();
+      (saleItemsData as any[] || []).forEach(item => {
+        const name = item.products?.name || 'Unknown';
+        itemMap.set(name, (itemMap.get(name) || 0) + Number(item.quantity));
+      });
+
+      const sortedItems = Array.from(itemMap.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
+
+      const colors = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981'];
+      const topSellingWithColors = sortedItems.map((item, index) => ({
+        ...item,
+        color: colors[index % colors.length]
+      }));
+
       setSalesData(chartData);
       setRecentSales(recentSalesData || []);
-      setLowStockItems(lowStockList.slice(0, 5)); // Top 5 low stock items
+      setLowStockItems(lowStockList);
+      setOutOfStockItems(outOfStockList);
+      setTopSellingItems(topSellingWithColors);
 
       setStats({
         totalProducts: productCount || 0,
@@ -78,6 +109,7 @@ export function Dashboard() {
         todaySales: todaySalesData?.length || 0,
         todayRevenue,
         lowStockProducts: lowStockList.length,
+        outOfStockProducts: outOfStockList.length,
         pendingReturns: pendingReturnsCount || 0,
       });
     } catch (error) {
@@ -129,6 +161,14 @@ export function Dashboard() {
       bgColor: 'bg-orange-50',
     },
     {
+      title: 'Stock Out',
+      value: stats.outOfStockProducts.toLocaleString(),
+      subtext: 'Needs Immediate Restock',
+      icon: AlertTriangle,
+      iconColor: 'text-red-500',
+      bgColor: 'bg-red-50',
+    },
+    {
       title: 'Returns',
       value: stats.pendingReturns.toLocaleString(),
       subtext: 'Pending Process',
@@ -136,13 +176,6 @@ export function Dashboard() {
       iconColor: 'text-red-500',
       bgColor: 'bg-red-50',
     },
-  ];
-
-  const pieData = [
-    { name: 'Engine Parts', value: 35, color: '#EF4444' },
-    { name: 'Lubricants', value: 25, color: '#F59E0B' },
-    { name: 'Braking Sys', value: 20, color: '#3B82F6' },
-    { name: 'Accessories', value: 20, color: '#8B5CF6' },
   ];
 
   if (loading) {
@@ -210,10 +243,10 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Categories Chart */}
+        {/* Top Selling Items Chart */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Top Categories</h3>
+            <h3 className="text-lg font-bold text-slate-900">Top Selling Items</h3>
             <button className="text-slate-400 hover:text-slate-600">
               <TrendingUp className="w-5 h-5" />
             </button>
@@ -222,7 +255,7 @@ export function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={pieData}
+                  data={topSellingItems}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -230,27 +263,33 @@ export function Dashboard() {
                   paddingAngle={5}
                   dataKey="value"
                 >
-                  {pieData.map((entry, index) => (
+                  {topSellingItems.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
+                <Tooltip />
               </PieChart>
             </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-bold text-slate-900">35%</span>
-              <span className="text-xs text-slate-500">Engine Parts</span>
-            </div>
+            {topSellingItems.length > 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-2xl font-bold text-slate-900">{topSellingItems[0].value}</span>
+                <span className="text-xs text-slate-500">Units Sold</span>
+              </div>
+            )}
           </div>
           <div className="space-y-3 mt-6">
-            {pieData.map((item) => (
+            {topSellingItems.map((item) => (
               <div key={item.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-sm text-slate-600">{item.name}</span>
+                  <span className="text-sm text-slate-600 truncate max-w-[150px]">{item.name}</span>
                 </div>
-                <span className="text-sm font-bold text-slate-900">{item.value}%</span>
+                <span className="text-sm font-bold text-slate-900">{item.value}</span>
               </div>
             ))}
+            {topSellingItems.length === 0 && (
+              <p className="text-center text-slate-500 py-4 text-sm">No sales data for this month</p>
+            )}
           </div>
         </div>
       </div>
@@ -296,20 +335,53 @@ export function Dashboard() {
 
         {/* Stock Alert */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Stock Alert</h3>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-slate-900">Stock Alert</h3>
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+              <button
+                onClick={() => setActiveStockTab('low')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${activeStockTab === 'low' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Low Stock ({stats.lowStockProducts})
+              </button>
+              <button
+                onClick={() => setActiveStockTab('out')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${activeStockTab === 'out' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Stock Out ({stats.outOfStockProducts})
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-4">
             <div className="flex justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-100">
               <span>Product</span>
               <span>Quantity</span>
             </div>
-            {lowStockItems.map((item, index) => (
-              <div key={index} className="flex items-center justify-between py-2">
-                <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
-                <span className="text-sm font-bold text-red-600">{item.current_quantity}</span>
-              </div>
-            ))}
-            {lowStockItems.length === 0 && (
-              <p className="text-center text-slate-500 py-4">No low stock items</p>
+            {activeStockTab === 'low' ? (
+              <>
+                {lowStockItems.slice(0, 10).map((item, index) => (
+                  <div key={index} className="flex items-center justify-between py-2">
+                    <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
+                    <span className="text-sm font-bold text-orange-600">{item.current_quantity}</span>
+                  </div>
+                ))}
+                {lowStockItems.length === 0 && (
+                  <p className="text-center text-slate-500 py-4">No low stock items</p>
+                )}
+              </>
+            ) : (
+              <>
+                {outOfStockItems.slice(0, 10).map((item, index) => (
+                  <div key={index} className="flex items-center justify-between py-2">
+                    <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
+                    <span className="text-sm font-bold text-red-600">{item.current_quantity}</span>
+                  </div>
+                ))}
+                {outOfStockItems.length === 0 && (
+                  <p className="text-center text-slate-500 py-4">No out of stock items</p>
+                )}
+              </>
             )}
           </div>
         </div>
