@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Package, Users, ShoppingCart, TrendingUp, DollarSign, AlertTriangle, FileText } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { StockFilter } from '../hooks/useProducts';
 
 interface DashboardStats {
   totalProducts: number;
@@ -13,7 +14,11 @@ interface DashboardStats {
   pendingReturns: number;
 }
 
-export function Dashboard() {
+interface DashboardProps {
+  onFilterNavigate?: (filter: StockFilter) => void;
+}
+
+export function Dashboard({ onFilterNavigate }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
     totalCustomers: 0,
@@ -54,7 +59,7 @@ export function Dashboard() {
         supabase.from('sales').select('total_amount').gte('sale_date', today),
         supabase
           .from('product_batches')
-          .select('current_quantity, products!inner(name, reorder_level)')
+          .select('current_quantity, products!inner(id, name, reorder_level)')
           .eq('products.active', true),
         supabase.from('returns').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('sales').select('*, customers(name)').order('created_at', { ascending: false }).limit(5),
@@ -159,6 +164,7 @@ export function Dashboard() {
       icon: AlertTriangle,
       iconColor: 'text-orange-500',
       bgColor: 'bg-orange-50',
+      filter: 'low_stock' as StockFilter,
     },
     {
       title: 'Stock Out',
@@ -167,6 +173,7 @@ export function Dashboard() {
       icon: AlertTriangle,
       iconColor: 'text-red-500',
       bgColor: 'bg-red-50',
+      filter: 'out_of_stock' as StockFilter,
     },
     {
       title: 'Returns',
@@ -199,7 +206,8 @@ export function Dashboard() {
           return (
             <div
               key={card.title}
-              className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col items-center text-center lg:items-start lg:text-left hover:shadow-md transition-shadow"
+              onClick={() => card.filter && onFilterNavigate?.(card.filter)}
+              className={`bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col items-center text-center lg:items-start lg:text-left hover:shadow-md transition-shadow ${card.filter ? 'cursor-pointer' : ''}`}
             >
               <div className={`${card.bgColor} p-3 rounded-xl mb-3 lg:mb-4`}>
                 <Icon className={`w-6 h-6 ${card.iconColor}`} />
@@ -336,7 +344,10 @@ export function Dashboard() {
         {/* Stock Alert */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Stock Alert</h3>
+            <h3 className="text-lg font-bold text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
+              onClick={() => onFilterNavigate?.(activeStockTab === 'low' ? 'low_stock' : 'out_of_stock')}>
+              Stock Alert
+            </h3>
             <div className="flex bg-slate-100 p-1 rounded-lg">
               <button
                 onClick={() => setActiveStockTab('low')}
@@ -361,7 +372,9 @@ export function Dashboard() {
             {activeStockTab === 'low' ? (
               <>
                 {lowStockItems.slice(0, 10).map((item, index) => (
-                  <div key={index} className="flex items-center justify-between py-2">
+                  <div key={index}
+                    onClick={() => onFilterNavigate?.('low_stock')}
+                    className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 px-2 -mx-2 rounded-lg transition-colors">
                     <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
                     <span className="text-sm font-bold text-orange-600">{item.current_quantity}</span>
                   </div>
@@ -373,7 +386,9 @@ export function Dashboard() {
             ) : (
               <>
                 {outOfStockItems.slice(0, 10).map((item, index) => (
-                  <div key={index} className="flex items-center justify-between py-2">
+                  <div key={index}
+                    onClick={() => onFilterNavigate?.('out_of_stock')}
+                    className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 px-2 -mx-2 rounded-lg transition-colors">
                     <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
                     <span className="text-sm font-bold text-red-600">{item.current_quantity}</span>
                   </div>

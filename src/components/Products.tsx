@@ -13,14 +13,18 @@ import { Upload, Filter } from 'lucide-react';
 import { productService } from '../services';
 import { logger } from '../lib/logger';
 
-export function Products() {
+interface ProductsProps {
+  initialStockFilter?: StockFilter;
+}
+
+export function Products({ initialStockFilter = 'all' }: ProductsProps) {
   const { isAdmin } = useAuth();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [searchType, setSearchType] = useState<SearchType>('all');
-  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
+  const [stockFilter, setStockFilter] = useState<StockFilter>(initialStockFilter);
 
   const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch, searchType, stockFilter);
   const [suppliers, setSuppliers] = useState<any[]>([]);

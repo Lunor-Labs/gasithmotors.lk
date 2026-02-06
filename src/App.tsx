@@ -12,10 +12,17 @@ import { Returns } from './components/Returns';
 import { SalesHistory } from './components/SalesHistory';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
+import { StockFilter } from './hooks/useProducts';
 
 function AppContent() {
   const { user, profile, loading } = useAuth();
   const [currentView, setCurrentView] = useState('dashboard');
+  const [initialStockFilter, setInitialStockFilter] = useState<StockFilter>('all');
+
+  const handleNavigate = (view: string, filter: StockFilter = 'all') => {
+    setInitialStockFilter(filter);
+    setCurrentView(view);
+  };
 
   if (loading) {
     return (
@@ -33,10 +40,14 @@ function AppContent() {
   }
 
   return (
-    <Layout currentView={currentView} onNavigate={setCurrentView}>
-      {currentView === 'dashboard' && <Dashboard />}
+    <Layout currentView={currentView} onNavigate={(view) => handleNavigate(view)}>
+      {currentView === 'dashboard' && (
+        <Dashboard onFilterNavigate={(filter) => handleNavigate('products', filter)} />
+      )}
       {currentView === 'pos' && <POS />}
-      {currentView === 'products' && <Products />}
+      {currentView === 'products' && (
+        <Products key={initialStockFilter} initialStockFilter={initialStockFilter} />
+      )}
       {currentView === 'customers' && <Customers />}
       {currentView === 'suppliers' && <Suppliers />}
       {currentView === 'referral-agents' && <ReferralAgents />}
