@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
 import { ProductWithStock } from '../../types';
 import { ProductImage } from '../ProductImage';
 import { Plus } from 'lucide-react';
 import { SupplierForm } from '../suppliers/SupplierForm';
 import { useAuth } from '../../contexts/AuthContext';
+import { supplierService, productService } from '../../services';
 
 interface ProductDetailsViewProps {
   product: ProductWithStock;
@@ -32,29 +32,27 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
   }, []);
 
   async function loadSuppliers() {
-    const { data } = await supabase.from('suppliers').select('id, name').eq('active', true).order('name');
-    setSuppliers(data || []);
+    try {
+      const data = await supplierService.getActiveSuppliers();
+      setSuppliers(data || []);
+    } catch (error) {
+      console.error('Failed to load suppliers', error);
+    }
   }
 
   const handleQuickAddSupplier = async (data: any) => {
     try {
-      const { data: newSupplier, error } = await supabase
-        .from('suppliers')
-        .insert({
-          name: data.name,
-          contact_person: data.contact_person || null,
-          phone: data.phone || null,
-          email: data.email || null,
-          address: data.address || null,
-          notes: data.notes || null,
-        } as any)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const newSupplier = await supplierService.createSupplier({
+        name: data.name,
+        contact_person: data.contact_person || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        address: data.address || null,
+        notes: data.notes || null,
+      });
 
       await loadSuppliers();
-      setStockFormData({ ...stockFormData, supplier_id: (newSupplier as any).id });
+      setStockFormData({ ...stockFormData, supplier_id: newSupplier.id });
       setShowQuickAddSupplier(false);
     } catch (error: any) {
       alert('Error adding supplier: ' + error.message);
@@ -65,7 +63,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
     e.preventDefault();
     try {
       const batchNumber = `ADD-${product.sku}-${new Date().getTime().toString().slice(-4)}`;
-      const { error } = await supabase.from('product_batches').insert({
+      await productService.createBatch({
         product_id: product.id,
         batch_number: batchNumber,
         supplier_id: stockFormData.supplier_id,
@@ -75,9 +73,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
         initial_quantity: stockFormData.quantity,
         current_quantity: stockFormData.quantity,
         received_date: new Date().toISOString().split('T')[0],
-      } as any);
-
-      if (error) throw error;
+      });
 
       alert('Stock added successfully!');
       setShowAddStock(false);

@@ -89,4 +89,11 @@ export class PurchaseOrderRepository extends BaseRepository<PurchaseOrder> {
             items: createdItems
         };
     }
+
+    async updateStatus(id: string, status: string): Promise<PurchaseOrder> {
+        return this.update(id, {
+            status,
+            updated_at: new Date().toISOString()
+        } as any);
+    }
 }

@@ -498,6 +498,30 @@ export class SalesService {
     }
 
 
+    /**
+     * Get sales for a date range with details
+     */
+    async getSales(startDate: string, endDate: string): Promise<any[]> {
+        try {
+            return await this.saleRepo.findSalesWithDetails(startDate, endDate);
+        } catch (error) {
+            logger.error('Failed to fetch sales', error as Error);
+            throw new Error('Unable to load sales data');
+        }
+    }
+
+    /**
+     * Get items for a specific sale with details
+     */
+    async getSaleItems(saleId: string): Promise<any[]> {
+        try {
+            return await this.saleRepo.findItemsWithDetails(saleId);
+        } catch (error) {
+            logger.error('Failed to fetch sale items', error as Error);
+            throw new Error('Unable to load sale items');
+        }
+    }
+
 
     /**
      * Sync offline sale
@@ -534,6 +558,46 @@ export class SalesService {
             }
         } catch (error) {
             logger.error('Failed to sync offline sale', error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get commissions by agent
+     */
+    async getCommissionsByAgent(agentId: string) {
+        try {
+            logger.debug('Fetching commissions for agent', { agentId });
+            return await this.saleRepo.findCommissionsByAgent(agentId);
+        } catch (error) {
+            logger.error('Failed to fetch commissions', error as Error);
+            throw new Error('Unable to load commissions');
+        }
+    }
+
+    /**
+     * Payout commissions
+     */
+    async payoutCommissions(commissionIds: string[]) {
+        try {
+            logger.info('Paying out commissions', { count: commissionIds.length });
+            await this.saleRepo.payoutCommissions(commissionIds);
+            logger.info('Commissions paid out successfully');
+        } catch (error) {
+            logger.error('Failed to payout commissions', error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Find sale by sale number
+     */
+    async findSaleByNumber(saleNumber: string): Promise<SaleWithItems | null> {
+        try {
+            logger.debug('Finding sale by number', { saleNumber });
+            return await this.saleRepo.findBySaleNumber(saleNumber);
+        } catch (error) {
+            logger.error('Failed to find sale by number', error as Error);
             throw error;
         }
     }

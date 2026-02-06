@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
-import { Plus, Search, Edit, Users, CreditCard, CheckCircle, Clock, AlertCircle, Eye, FileText, X } from 'lucide-react';
+import { Plus, Search, Edit, Users, CreditCard, CheckCircle, Clock, Eye, FileText, X } from 'lucide-react';
 import { Invoice, InvoiceData } from './Invoice';
+import { customerService, salesService } from '../services';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 
@@ -19,7 +19,6 @@ interface CreditSale {
   discount_amount: number;
   tax_amount: number;
   cashier_id: string;
-  user_id: string;
 }
 
 type SaleDetailItem = Database['public']['Tables']['sale_items']['Row'] & {
@@ -63,14 +62,8 @@ export function Customers() {
 
   async function loadCustomers() {
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('active', true)
-        .order('name');
-
-      if (error) throw error;
-      setCustomers(data || []);
+      const data = await customerService.getAllCustomers();
+      setCustomers(data);
     } catch (error) {
       console.error('Error loading customers:', error);
     } finally {
@@ -83,7 +76,15 @@ export function Customers() {
 
     try {
       if (modalMode === 'add') {
-        const { error } = await supabase.from('customers').insert({
+        await customerService.createCustomer({
+          name: formData.name,
+          phone: formData.phone || null,
+          email: formData.email || null,
+          address: formData.address || null,
+          credit_limit: formData.credit_limit,
+        });
+      } else if (selectedCustomer) {
+        await customerService.updateCustomer(selectedCustomer.id, {
           name: formData.name,
           phone: formData.phone || null,
           email: formData.email || null,
@@ -91,23 +92,6 @@ export function Customers() {
           credit_limit: formData.credit_limit,
           notes: formData.notes || null,
         });
-
-        if (error) throw error;
-      } else if (selectedCustomer) {
-        const { error } = await supabase
-          .from('customers')
-          .update({
-            name: formData.name,
-            phone: formData.phone || null,
-            email: formData.email || null,
-            address: formData.address || null,
-            credit_limit: formData.credit_limit,
-            notes: formData.notes || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedCustomer.id);
-
-        if (error) throw error;
       }
 
       setShowModal(false);
@@ -160,14 +144,7 @@ export function Customers() {
   async function loadCreditSales(customerId: string) {
     setLoadingCreditSales(true);
     try {
-      const { data, error } = await supabase
-        .from('sales')
-        .select('*')
-        .eq('customer_id', customerId)
-        .in('status', ['credit', 'partial'])
-        .order('sale_date', { ascending: false });
-
-      if (error) throw error;
+      const data = await salesService.getCreditSalesByCustomer(customerId);
       setCreditSales(data as CreditSale[]);
     } catch (error) {
       console.error('Error loading credit sales:', error);
@@ -199,34 +176,7 @@ export function Customers() {
     }
 
     try {
-      const newPaidAmount = sale.paid_amount + amount;
-      const newStatus = newPaidAmount >= sale.total_amount ? 'completed' : 'partial';
-      const newNotes = (sale.notes || '') + `\nPayment of LKR ${amount.toFixed(2)} received on ${new Date().toLocaleDateString()}`;
-
-      // 1. Update Sale
-      const { error: saleError } = await supabase
-        .from('sales')
-        .update({
-          paid_amount: newPaidAmount,
-          status: newStatus,
-          notes: newNotes,
-          updated_at: new Date().toISOString()
-        } as any)
-        .eq('id', sale.id);
-
-      if (saleError) throw saleError;
-
-      // 2. Update Customer Credit
-      const { error: customerError } = await supabase
-        .from('customers')
-        .update({
-          current_credit: selectedCustomer.current_credit - amount,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedCustomer.id);
-
-      if (customerError) throw customerError;
-
+      await salesService.processCreditPayment(sale.id, amount);
       alert('Payment recorded successfully');
 
       // Refresh data
@@ -252,16 +202,7 @@ export function Customers() {
     setLoadingSaleItems(true);
 
     try {
-      const { data, error } = await supabase
-        .from('sale_items')
-        .select(`
-          *,
-          product:products(name, sku),
-          batch:product_batches(batch_number)
-        `)
-        .eq('sale_id', sale.id);
-
-      if (error) throw error;
+      const data = await salesService.getSaleItems(sale.id);
 
       // Transform data
       const formattedItems = (data as any[] || []).map(item => ({

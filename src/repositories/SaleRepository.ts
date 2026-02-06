@@ -247,4 +247,81 @@ export class SaleRepository extends BaseRepository<Sale> {
     }): Promise<void> {
         await this.adapter.insert('referral_commissions', data);
     }
+
+    /**
+     * Find sales with full details (customer, cashier) for a date range
+     */
+    async findSalesWithDetails(startDate: string, endDate: string): Promise<SaleWithItems[]> {
+        return this.adapter.query<SaleWithItems>('sales', {
+            select: '*, cashier:user_profiles!cashier_id(full_name), customer:customers(name, phone)',
+            where: [
+                { field: 'sale_date', operator: '>=', value: startDate },
+                { field: 'sale_date', operator: '<=', value: endDate },
+            ],
+            orderBy: [{ field: 'sale_date', direction: 'desc' }],
+        });
+    }
+
+    /**
+     * Find sale by sale number with items
+     */
+    async findBySaleNumber(saleNumber: string): Promise<SaleWithItems | null> {
+        const sale = await this.adapter.query<Sale>('sales', {
+            where: [{ field: 'sale_number', operator: '=', value: saleNumber }]
+        }).then(res => res[0] || null);
+
+        if (!sale) return null;
+
+        const items = await this.findItemsWithDetails(sale.id);
+
+        return {
+            ...sale,
+            items
+        };
+    }
+
+    /**
+     * Find items with product and batch details for a sale
+     */
+    async findItemsWithDetails(saleId: string): Promise<SaleItem[]> {
+        return this.adapter.query<SaleItem>('sale_items', {
+            select: '*, product:products(name, sku), batch:product_batches(batch_number)',
+            where: [{ field: 'sale_id', operator: '=', value: saleId }],
+        });
+    }
+
+    /**
+     * Find commissions by agent
+     */
+    async findCommissionsByAgent(agentId: string): Promise<any[]> {
+        const client = (this.adapter as any).getClient();
+        const { data, error } = await client
+            .from('referral_commissions')
+            .select(`
+                *,
+                sale:sales(sale_number)
+            `)
+            .eq('referral_agent_id', agentId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    }
+
+    /**
+     * Payout commissions
+     */
+    async payoutCommissions(ids: string[]): Promise<void> {
+        const client = (this.adapter as any).getClient();
+        const { error } = await client
+            .from('referral_commissions')
+            .update({
+                status: 'paid',
+                payment_date: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            } as any)
+            .in('id', ids);
+
+        if (error) throw error;
+    }
 }

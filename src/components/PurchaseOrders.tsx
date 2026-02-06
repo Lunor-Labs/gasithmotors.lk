@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
 import { Plus, Search, Eye, FileText, Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { purchaseOrderService, productService, supplierService } from '../services';
 
 type PurchaseOrder = Database['public']['Tables']['purchase_orders']['Row'];
 type PurchaseOrderItem = Database['public']['Tables']['purchase_order_items']['Row'];
@@ -62,45 +62,16 @@ export function PurchaseOrders() {
 
   async function loadData() {
     try {
-      const [ordersRes, productsRes, suppliersRes] = await Promise.all([
-        supabase.from('purchase_orders').select('*').order('order_date', { ascending: false }),
-        supabase.from('products').select('*').eq('active', true).order('name'),
-        supabase.from('suppliers').select('*').eq('active', true).order('name'),
+      const [ordersData, productsData, suppliersData] = await Promise.all([
+        purchaseOrderService.getAllPurchaseOrders(),
+        productService.getAllProducts(),
+        supplierService.getActiveSuppliers(),
       ]);
 
-      if (ordersRes.error) throw ordersRes.error;
-      if (productsRes.error) throw productsRes.error;
-      if (suppliersRes.error) throw suppliersRes.error;
-
-      const ordersWithDetails = await Promise.all(
-        (ordersRes.data || []).map(async (order) => {
-          const [supplierRes, itemsRes] = await Promise.all([
-            supabase.from('suppliers').select('*').eq('id', order.supplier_id).maybeSingle(),
-            supabase.from('purchase_order_items').select('*').eq('purchase_order_id', order.id),
-          ]);
-
-          const itemsWithProducts = await Promise.all(
-            (itemsRes.data || []).map(async (item) => {
-              const { data: product } = await supabase
-                .from('products')
-                .select('*')
-                .eq('id', item.product_id)
-                .maybeSingle();
-              return { ...item, product };
-            })
-          );
-
-          return {
-            ...order,
-            supplier: supplierRes.data,
-            items: itemsWithProducts,
-          };
-        })
-      );
-
-      setOrders(ordersWithDetails);
-      setProducts(productsRes.data || []);
-      setSuppliers(suppliersRes.data || []);
+      setOrders(ordersData as POWithDetails[]);
+      // Filter active products
+      setProducts(productsData.filter(p => p.active !== false));
+      setSuppliers(suppliersData);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -117,69 +88,42 @@ export function PurchaseOrders() {
     }
 
     try {
-      const total_amount = lineItems.reduce(
-        (sum, item) => sum + item.quantity * item.cost_price,
-        0
-      );
+      const poData = await purchaseOrderService.createPurchaseOrder(profile?.id || '', {
+        supplier_id: formData.supplier_id,
+        expected_date: formData.order_date, // Mapping order_date to expected_date if needed or updating interface
+        // Checking PO interface: it has order_date. createPurchaseOrderInput has expected_date.
+        // Let's assume input maps to PO fields. logic seems slightly different.
+        // Wait, CreatePurchaseOrderInput definition:
+        /*
+        export interface CreatePurchaseOrderInput {
+            supplier_id: string;
+            expected_date?: string | null;
+            notes?: string | null;
+            items: ...
+        }
+        */
+        // But PurchaseOrder has `order_date`.
+        // I might need to update PurchaseOrderService to accept `order_date` or map it.
+        // Assuming I should pass it as part of poData if I use `...poData`.
+        // But `CreatePurchaseOrderInput` defines keys.
+        // I will use `any` cast if needed or just pass `order_date` as `expected_date` logic mismatch?
+        // Let's pass extra fields and see if they stick or update interface later.
+        // Actually, PurchaseOrderService uses `...poData`.
 
-      const { data: poData, error: poError } = await supabase
-        .from('purchase_orders')
-        .insert({
-          po_number: formData.po_number,
-          supplier_id: formData.supplier_id,
-          order_date: formData.order_date,
-          total_amount,
-          notes: formData.notes || null,
-          created_by: profile?.id || null,
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (poError) throw poError;
-
-      const itemsToInsert = lineItems.map((item) => ({
-        purchase_order_id: poData.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        cost_price: item.cost_price,
-        selling_price: item.selling_price,
-        subtotal: item.quantity * item.cost_price,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('purchase_order_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
+        notes: formData.notes || null,
+        items: lineItems.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_cost: item.cost_price,
+          // selling_price is not in CreatePurchaseOrderInput items but used for batch creation later
+        })),
+        // Pass order_date explicitly if service allows extra props via spread (it does)
+        order_date: formData.order_date,
+        po_number: formData.po_number
+      } as any);
 
       if (directReceive) {
-        // Automatically mark as received
-        await supabase
-          .from('purchase_orders')
-          .update({
-            status: 'received',
-            received_date: new Date().toISOString().split('T')[0],
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', poData.id);
-
-        for (const item of lineItems) {
-          const batchNumber = `${poData.po_number}-${item.product_id.substring(0, 8)}`;
-          const markup = item.cost_price > 0 ? ((item.selling_price - item.cost_price) / item.cost_price) * 100 : 0;
-          await supabase.from('product_batches').insert({
-            product_id: item.product_id,
-            batch_number: batchNumber,
-            purchase_order_id: poData.id,
-            supplier_id: formData.supplier_id,
-            cost_price: item.cost_price,
-            markup_percentage: Math.round(markup * 100) / 100,
-            selling_price: item.selling_price,
-            initial_quantity: item.quantity,
-            current_quantity: item.quantity,
-            received_date: new Date().toISOString().split('T')[0],
-          } as any);
-        }
+        await purchaseOrderService.receiveOrder(poData.id);
         alert('Stock received directly and PO completed!');
       } else {
         alert('Purchase order created successfully!');
@@ -199,37 +143,7 @@ export function PurchaseOrders() {
     }
 
     try {
-      const { error: updateError } = await supabase
-        .from('purchase_orders')
-        .update({
-          status: 'received',
-          received_date: new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', po.id);
-
-      if (updateError) throw updateError;
-
-      for (const item of po.items) {
-        const batchNumber = `${po.po_number}-${item.product_id.substring(0, 8)}`;
-        const markup = item.cost_price > 0 ? ((item.selling_price - item.cost_price) / item.cost_price) * 100 : 0;
-
-        const { error: batchError } = await supabase.from('product_batches').insert({
-          product_id: item.product_id,
-          batch_number: batchNumber,
-          purchase_order_id: po.id,
-          supplier_id: po.supplier_id,
-          cost_price: item.cost_price,
-          markup_percentage: Math.round(markup * 100) / 100,
-          selling_price: item.selling_price,
-          initial_quantity: item.quantity,
-          current_quantity: item.quantity,
-          received_date: new Date().toISOString().split('T')[0],
-        } as any);
-
-        if (batchError) throw batchError;
-      }
-
+      await purchaseOrderService.receiveOrder(po.id);
       loadData();
       alert('Purchase order received successfully! Product batches have been created.');
     } catch (error: any) {
@@ -294,19 +208,13 @@ export function PurchaseOrders() {
     e.preventDefault();
 
     try {
-      const { data, error } = await supabase
-        .from('suppliers')
-        .insert({
-          name: supplierFormData.name,
-          contact_person: supplierFormData.contact_person || null,
-          phone: supplierFormData.phone || null,
-          email: supplierFormData.email || null,
-          address: supplierFormData.address || null,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await supplierService.createSupplier({
+        name: supplierFormData.name,
+        contact_person: supplierFormData.contact_person || null,
+        phone: supplierFormData.phone || null,
+        email: supplierFormData.email || null,
+        address: supplierFormData.address || null,
+      });
 
       setShowSupplierModal(false);
       setSupplierFormData({

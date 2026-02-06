@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import { Plus, Search, Upload, Filter, Download } from 'lucide-react';
 import Papa from 'papaparse';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +9,7 @@ import { ProductTable } from './products/ProductTable';
 import { ProductForm } from './products/ProductForm';
 import { ProductDetailsView } from './products/ProductDetailsView';
 import { ProductImporter } from './products/ProductImporter';
-import { productService } from '../services';
+import { productService, supplierService } from '../services';
 import { logger } from '../lib/logger';
 
 interface ProductsProps {
@@ -70,8 +69,12 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
   }, []);
 
   async function loadSuppliers() {
-    const { data } = await supabase.from('suppliers').select('id, name').eq('active', true).order('name');
-    setSuppliers(data || []);
+    try {
+      const data = await supplierService.getActiveSuppliers();
+      setSuppliers(data);
+    } catch (error) {
+      console.error('Failed to load suppliers:', error);
+    }
   }
 
   useEffect(() => {
@@ -139,31 +142,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
   }
 
   async function generateNextSKU() {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('sku')
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) return 'SKU-0001';
-
-      const lastSku = (data[0] as any).sku;
-      const match = lastSku.match(/(\d+)$/);
-
-      if (!match) return `${lastSku}-0001`;
-
-      const lastNumber = parseInt(match[0]);
-      const nextNumber = lastNumber + 1;
-      const numberPart = nextNumber.toString().padStart(match[0].length, '0');
-
-      return lastSku.substring(0, lastSku.length - match[0].length) + numberPart;
-    } catch (error) {
-      console.error('Error generating SKU:', error);
-      return '';
-    }
+    return await productService.generateNextSku();
   }
 
   async function openAddModal() {
@@ -234,7 +213,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
         // Create initial batch if stock info provided
         if (formData.initial_quantity > 0 && formData.supplier_id) {
           const batchNumber = `INIT-${newProduct.sku}-${new Date().getTime().toString().slice(-4)}`;
-          const { error: batchError } = await supabase.from('product_batches').insert({
+          await productService.createBatch({
             product_id: newProduct.id,
             batch_number: batchNumber,
             supplier_id: formData.supplier_id,
@@ -244,9 +223,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
             initial_quantity: formData.initial_quantity,
             current_quantity: formData.initial_quantity,
             received_date: new Date().toISOString().split('T')[0],
-          } as any);
-
-          if (batchError) throw batchError;
+          });
         }
 
         alert('Product added successfully!');
@@ -277,31 +254,22 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
   async function handlePrintBarcode(product: ProductWithStock) {
     if (!product.barcode) {
       const confirmAssign = window.confirm(`No barcode assigned. Would you like to generate one using SKU (${product.sku})?`);
-      if (confirmAssign) {
-        try {
-          const { error } = await (supabase
-            .from('products') as any)
-            .update({ barcode: product.sku } as any)
-            .eq('id', product.id);
+      if (!confirmAssign) return;
 
-          if (error) throw error;
-
-          // Local update to avoid waiting for refetch to open modal
-          const updatedProduct = { ...product, barcode: product.sku };
-          setBarcodeProduct(updatedProduct);
-          setShowBarcodeModal(true);
-          refetch(); // Background refresh
-          return;
-        } catch (error: any) {
-          alert('Failed to assign barcode: ' + error.message);
-          return;
-        }
-      } else {
-        return;
+      try {
+        await productService.updateProduct(product.id, { barcode: product.sku });
+        const updatedProduct = { ...product, barcode: product.sku };
+        setBarcodeProduct(updatedProduct);
+        setShowBarcodeModal(true);
+        refetch();
+      } catch (error) {
+        logger.error('Failed to update barcode', error as Error);
+        alert('Failed to assign barcode');
       }
+    } else {
+      setBarcodeProduct(product);
+      setShowBarcodeModal(true);
     }
-    setBarcodeProduct(product);
-    setShowBarcodeModal(true);
   }
 
   async function handleExportCSV() {

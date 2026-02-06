@@ -287,4 +287,50 @@ export class ProductService {
             throw new Error('Reorder level cannot be negative.');
         }
     }
+
+    /**
+     * Generate next SKU
+     */
+    async generateNextSku(): Promise<string> {
+        try {
+            const client = (this.productRepo as any).adapter.getClient();
+            const { data, error } = await client
+                .from('products')
+                .select('sku')
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) return 'SKU-0001';
+
+            const lastSku = (data[0] as any).sku;
+            const match = lastSku.match(/(\d+)$/);
+
+            if (!match) return `${lastSku}-0001`;
+
+            const lastNumber = parseInt(match[0]);
+            const nextNumber = lastNumber + 1;
+            const numberPart = nextNumber.toString().padStart(match[0].length, '0');
+
+            return lastSku.substring(0, lastSku.length - match[0].length) + numberPart;
+        } catch (error) {
+            logger.error('Failed to generate SKU', error as Error);
+            return 'SKU-' + Date.now().toString().slice(-6);
+        }
+    }
+
+    /**
+     * Create product batch (add stock)
+     */
+    async createBatch(batchData: any): Promise<void> {
+        try {
+            const client = (this.productRepo as any).adapter.getClient();
+            const { error } = await client.from('product_batches').insert(batchData);
+            if (error) throw error;
+        } catch (error) {
+            logger.error('Failed to create batch', error as Error);
+            throw error;
+        }
+    }
 }

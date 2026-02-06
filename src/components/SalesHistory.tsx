@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
 import { Invoice, InvoiceData } from './Invoice';
 import { Search, Eye, FileText, X, Trash2 } from 'lucide-react';
@@ -44,29 +43,12 @@ export function SalesHistory() {
     async function loadSales() {
         setLoading(true);
         try {
-            let query = supabase
-                .from('sales')
-                .select(`
-          *,
-          cashier:user_profiles!cashier_id(full_name),
-          customer:customers(name, phone)
-        `)
-                .gte('sale_date', `${dateRange.start}T00:00:00`)
-                .lte('sale_date', `${dateRange.end}T23:59:59`)
-                .order('sale_date', { ascending: false });
+            const data = await salesService.getSales(
+                `${dateRange.start}T00:00:00`,
+                `${dateRange.end}T23:59:59`
+            );
 
-            const { data, error } = await query;
-
-            if (error) throw error;
-
-            // Transform data to match our type
-            const formattedData = (data as any[] || []).map(item => ({
-                ...item,
-                cashier: item.cashier ? (Array.isArray(item.cashier) ? item.cashier[0] : item.cashier) : null,
-                customer: item.customer ? (Array.isArray(item.customer) ? item.customer[0] : item.customer) : null
-            })) as Sale[];
-
-            setSales(formattedData);
+            setSales(data);
         } catch (error) {
             console.error('Error loading sales:', error);
         } finally {
@@ -80,25 +62,8 @@ export function SalesHistory() {
         setLoadingItems(true);
 
         try {
-            const { data, error } = await supabase
-                .from('sale_items')
-                .select(`
-          *,
-          product:products(name, sku),
-          batch:product_batches(batch_number)
-        `)
-                .eq('sale_id', sale.id);
-
-            if (error) throw error;
-
-            // Transform data
-            const formattedItems = (data as any[] || []).map(item => ({
-                ...item,
-                product: item.product ? (Array.isArray(item.product) ? item.product[0] : item.product) : null,
-                batch: item.batch ? (Array.isArray(item.batch) ? item.batch[0] : item.batch) : null,
-            })) as SaleItem[];
-
-            setSaleItems(formattedItems);
+            const data = await salesService.getSaleItems(sale.id);
+            setSaleItems(data);
         } catch (error) {
             console.error('Error loading sale items:', error);
             alert('Failed to load sale details');

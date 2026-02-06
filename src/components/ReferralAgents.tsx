@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
 import { Search, Plus, UserCheck, DollarSign, Edit, CheckCircle } from 'lucide-react';
+import { customerService, salesService } from '../services';
 
 type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
 
@@ -58,13 +58,7 @@ export function ReferralAgents() {
 
   async function loadAgents() {
     try {
-      const { data, error } = await supabase
-        .from('referral_agents')
-        .select('*')
-        .eq('active', true)
-        .order('name');
-
-      if (error) throw error;
+      const data = await customerService.getAllReferralAgents();
       setAgents((data as any) || []);
     } catch (error) {
       console.error('Error loading referral agents:', error);
@@ -76,18 +70,7 @@ export function ReferralAgents() {
   async function loadCommissions(agentId: string) {
     setLoadingCommissions(true);
     try {
-      // Load all commissions for this agent to calculate totals
-      // In a real app with pagination, we might want to do aggregation queries separately
-      const { data, error } = await supabase
-        .from('referral_commissions')
-        .select(`
-          *,
-          sale:sales(sale_number)
-        `)
-        .eq('referral_agent_id', agentId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await salesService.getCommissionsByAgent(agentId);
 
       // Transform and set data
       const formattedData = ((data as any) || []).map((item: any) => ({
@@ -118,17 +101,7 @@ export function ReferralAgents() {
 
     try {
       const idsToUpdate = filteredCommissions.map(c => c.id);
-
-      const { error } = await supabase
-        .from('referral_commissions')
-        .update({
-          status: 'paid',
-          payment_date: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as any)
-        .in('id', idsToUpdate);
-
-      if (error) throw error;
+      await salesService.payoutCommissions(idsToUpdate);
 
       alert('Payout recorded successfully!');
       if (selectedAgent) {
@@ -144,31 +117,23 @@ export function ReferralAgents() {
 
     try {
       if (modalMode === 'add') {
-        const { error } = await supabase.from('referral_agents').insert({
+        await customerService.createReferralAgent({
           name: formData.name,
           type: formData.type,
           phone: formData.phone || null,
           email: formData.email || null,
           address: formData.address || null,
           commission_rate: formData.commission_rate,
-        } as any);
-
-        if (error) throw error;
+        });
       } else if (selectedAgent) {
-        const { error } = await supabase
-          .from('referral_agents')
-          .update({
-            name: formData.name,
-            type: formData.type,
-            phone: formData.phone || null,
-            email: formData.email || null,
-            address: formData.address || null,
-            commission_rate: formData.commission_rate,
-            updated_at: new Date().toISOString(),
-          } as any)
-          .eq('id', selectedAgent.id);
-
-        if (error) throw error;
+        await customerService.updateReferralAgent(selectedAgent.id, {
+          name: formData.name,
+          type: formData.type,
+          phone: formData.phone || null,
+          email: formData.email || null,
+          address: formData.address || null,
+          commission_rate: formData.commission_rate,
+        });
       }
 
       setShowModal(false);

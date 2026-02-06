@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { Database } from '../lib/database.types';
 import { Plus, Search, Edit, Truck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { SupplierForm } from './suppliers/SupplierForm';
+import { supplierService } from '../services';
 
 type Supplier = Database['public']['Tables']['suppliers']['Row'];
 
@@ -30,14 +30,8 @@ export function Suppliers() {
 
   async function loadSuppliers() {
     try {
-      const { data, error } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('active', true)
-        .order('name');
-
-      if (error) throw error;
-      setSuppliers(data || []);
+      const data = await supplierService.getActiveSuppliers();
+      setSuppliers(data);
     } catch (error) {
       console.error('Error loading suppliers:', error);
     } finally {
@@ -45,36 +39,26 @@ export function Suppliers() {
     }
   }
 
-  async function handleSubmit(data: typeof formData) { // Changed signature to accept 'data'
-    // e.preventDefault(); // Removed as 'data' is passed directly, not from a form event
-
+  async function handleSubmit(data: typeof formData) {
     try {
       if (modalMode === 'add') {
-        const { error } = await supabase.from('suppliers').insert({
+        await supplierService.createSupplier({
           name: data.name,
           contact_person: data.contact_person || null,
           phone: data.phone || null,
           email: data.email || null,
           address: data.address || null,
           notes: data.notes || null,
-        } as any);
-
-        if (error) throw error;
+        });
       } else if (selectedSupplier) {
-        const { error } = await supabase
-          .from('suppliers')
-          .update({
-            name: data.name,
-            contact_person: data.contact_person || null,
-            phone: data.phone || null,
-            email: data.email || null,
-            address: data.address || null,
-            notes: data.notes || null,
-            updated_at: new Date().toISOString(),
-          } as any)
-          .eq('id', selectedSupplier.id);
-
-        if (error) throw error;
+        await supplierService.updateSupplier(selectedSupplier.id, {
+          name: data.name,
+          contact_person: data.contact_person || null,
+          phone: data.phone || null,
+          email: data.email || null,
+          address: data.address || null,
+          notes: data.notes || null,
+        });
       }
 
       setShowModal(false);
