@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Upload, Filter, Download } from 'lucide-react';
+import Papa from 'papaparse';
 import { useAuth } from '../contexts/AuthContext';
 import { useProducts, SearchType, StockFilter } from '../hooks/useProducts';
 import { ProductWithStock } from '../types';
@@ -9,7 +10,6 @@ import { ProductTable } from './products/ProductTable';
 import { ProductForm } from './products/ProductForm';
 import { ProductDetailsView } from './products/ProductDetailsView';
 import { ProductImporter } from './products/ProductImporter';
-import { Upload, Filter } from 'lucide-react';
 import { productService } from '../services';
 import { logger } from '../lib/logger';
 
@@ -304,6 +304,63 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
     setShowBarcodeModal(true);
   }
 
+  async function handleExportCSV() {
+    try {
+      const allProducts = await productService.getAllProducts();
+
+      const csvData = allProducts.flatMap(product => {
+        if (product.batches && product.batches.length > 0) {
+          return product.batches.map(batch => ({
+            product_name: product.name,
+            sku: product.sku,
+            barcode: product.barcode || '',
+            category: product.category || 'Uncategorized',
+            supplier_name: batch.supplier?.name || '',
+            cost_price: batch.cost_price,
+            markup_percentage: batch.markup_percentage,
+            quantity: batch.current_quantity,
+            batch_number: batch.batch_number || '',
+            expiry_date: batch.expiry_date || '',
+            reorder_level: product.reorder_level,
+            unit: product.unit,
+            image_url: product.image_url || ''
+          }));
+        } else {
+          // If no batches, export product with 0 quantity
+          return [{
+            product_name: product.name,
+            sku: product.sku,
+            barcode: product.barcode || '',
+            category: product.category || 'Uncategorized',
+            supplier_name: '',
+            cost_price: 0,
+            markup_percentage: 0,
+            quantity: 0,
+            batch_number: '',
+            expiry_date: '',
+            reorder_level: product.reorder_level,
+            unit: product.unit,
+            image_url: product.image_url || ''
+          }];
+        }
+      });
+
+      const csv = Papa.unparse(csvData);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `products_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      logger.error('Failed to export products', error as Error);
+      alert('Failed to export products. Please try again.');
+    }
+  }
+
   if (loading && products.length === 0 && page === 1 && !searchTerm) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -321,13 +378,22 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
 
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium"
-            >
-              <Upload className="w-4 h-4" />
-              Import CSV
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium"
+              >
+                <Upload className="w-4 h-4" />
+                Import CSV
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+            </div>
           )}
           {isAdmin && (
             <button

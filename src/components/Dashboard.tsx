@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Package, Users, ShoppingCart, TrendingUp, DollarSign, AlertTriangle, FileText } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { StockFilter } from '../hooks/useProducts';
+import { productService } from '../services';
 
 interface DashboardStats {
   totalProducts: number;
@@ -48,7 +49,7 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
         { count: productCount },
         { count: customerCount },
         { data: todaySalesData },
-        { data: lowStockData },
+        allProducts,
         { count: pendingReturnsCount },
         { data: recentSalesData },
         { data: salesHistory },
@@ -57,10 +58,7 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('active', true),
         supabase.from('customers').select('*', { count: 'exact', head: true }).eq('active', true),
         supabase.from('sales').select('total_amount').gte('sale_date', today),
-        supabase
-          .from('product_batches')
-          .select('current_quantity, products!inner(id, name, reorder_level)')
-          .eq('products.active', true),
+        productService.getAllProducts(),
         supabase.from('returns').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('sales').select('*, customers(name)').order('created_at', { ascending: false }).limit(5),
         supabase.from('sales').select('created_at, total_amount').order('created_at', { ascending: true }).limit(50),
@@ -70,12 +68,12 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
       // Cast to any to avoid strict type checking issues with complex joins for now
       const todayRevenue = (todaySalesData as any[])?.reduce((sum, sale) => sum + Number(sale.total_amount), 0) || 0;
 
-      const lowStockList = (lowStockData as any[] || []).filter((batch: any) => {
-        return batch.current_quantity > 0 && batch.current_quantity <= (batch.products?.reorder_level || 0);
+      const lowStockList = allProducts.filter(product => {
+        return product.total_stock > 0 && product.total_stock <= (product.reorder_level || 0);
       });
 
-      const outOfStockList = (lowStockData as any[] || []).filter((batch: any) => {
-        return batch.current_quantity === 0;
+      const outOfStockList = allProducts.filter(product => {
+        return product.total_stock === 0;
       });
 
       // Process chart data
@@ -375,8 +373,8 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
                   <div key={index}
                     onClick={() => onFilterNavigate?.('low_stock')}
                     className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 px-2 -mx-2 rounded-lg transition-colors">
-                    <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
-                    <span className="text-sm font-bold text-orange-600">{item.current_quantity}</span>
+                    <span className="text-sm font-medium text-slate-700">{item.name}</span>
+                    <span className="text-sm font-bold text-orange-600">{item.total_stock}</span>
                   </div>
                 ))}
                 {lowStockItems.length === 0 && (
@@ -389,8 +387,8 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
                   <div key={index}
                     onClick={() => onFilterNavigate?.('out_of_stock')}
                     className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 px-2 -mx-2 rounded-lg transition-colors">
-                    <span className="text-sm font-medium text-slate-700">{item.products?.name}</span>
-                    <span className="text-sm font-bold text-red-600">{item.current_quantity}</span>
+                    <span className="text-sm font-medium text-slate-700">{item.name}</span>
+                    <span className="text-sm font-bold text-red-600">{item.total_stock}</span>
                   </div>
                 ))}
                 {outOfStockItems.length === 0 && (
