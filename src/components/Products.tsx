@@ -1,0 +1,518 @@
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Search, Upload, Filter, Download } from 'lucide-react';
+import Papa from 'papaparse';
+import { useAuth } from '../contexts/AuthContext';
+import { useProducts, SearchType, StockFilter } from '../hooks/useProducts';
+import { ProductWithStock } from '../types';
+import { BarcodeGenerator } from './BarcodeGenerator';
+import { ProductTable } from './products/ProductTable';
+import { ProductForm } from './products/ProductForm';
+import { ProductDetailsView } from './products/ProductDetailsView';
+import { ProductImporter } from './products/ProductImporter';
+import { productService, supplierService } from '../services';
+import { logger } from '../lib/logger';
+
+interface ProductsProps {
+  initialStockFilter?: StockFilter;
+}
+
+export function Products({ initialStockFilter = 'all' }: ProductsProps) {
+  const { isAdmin } = useAuth();
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchType, setSearchType] = useState<SearchType>('all');
+  const [stockFilter, setStockFilter] = useState<StockFilter>(initialStockFilter);
+
+  const { products, loading, refetch, totalCount, totalPages } = useProducts(page, pageSize, debouncedSearch, searchType, stockFilter);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
+  const [showAddStockInView, setShowAddStockInView] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductWithStock | null>(null);
+  const [formData, setFormData] = useState({
+    sku: '',
+    barcode: '',
+    name: '',
+    description: '',
+    category: '',
+    unit: 'piece',
+    reorder_level: 0,
+    image_url: '',
+    // Initial stock fields
+    initial_quantity: 0,
+    cost_price: 0,
+    markup_percentage: 0,
+    selling_price: 0,
+    supplier_id: '',
+  });
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+  const [barcodeProduct, setBarcodeProduct] = useState<ProductWithStock | null>(null);
+  const [scanningBarcode, setScanningBarcode] = useState(false);
+  const [barcodeInputBuffer, setBarcodeInputBuffer] = useState('');
+  const barcodeInputTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1); // Reset to page 1 on search
+      setDebouncedSearch(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, []);
+
+  async function loadSuppliers() {
+    try {
+      const data = await supplierService.getActiveSuppliers();
+      setSuppliers(data);
+    } catch (error) {
+      console.error('Failed to load suppliers:', error);
+    }
+  }
+
+  useEffect(() => {
+    if (!showModal || modalMode === 'view') return;
+
+    const handleBarcodeInput = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        const targetElement = e.target as HTMLInputElement;
+        if (targetElement.type !== 'text' || !targetElement.className.includes('border-slate-300')) {
+          return;
+        }
+      }
+
+      if (e.key === 'Enter' && barcodeInputBuffer.length > 3) {
+        e.preventDefault();
+        setFormData({ ...formData, barcode: barcodeInputBuffer });
+        setBarcodeInputBuffer('');
+        setScanningBarcode(false);
+        return;
+      }
+
+      if (e.key.length === 1) {
+        setScanningBarcode(true);
+        setBarcodeInputBuffer((prev) => prev + e.key);
+
+        if (barcodeInputTimeoutRef.current) {
+          clearTimeout(barcodeInputTimeoutRef.current);
+        }
+
+        barcodeInputTimeoutRef.current = setTimeout(() => {
+          setBarcodeInputBuffer('');
+          setScanningBarcode(false);
+        }, 100);
+      }
+    };
+
+    window.addEventListener('keypress', handleBarcodeInput);
+    return () => {
+      window.removeEventListener('keypress', handleBarcodeInput);
+      if (barcodeInputTimeoutRef.current) {
+        clearTimeout(barcodeInputTimeoutRef.current);
+      }
+    };
+  }, [showModal, modalMode, barcodeInputBuffer, formData]);
+
+  function resetForm() {
+    setFormData({
+      sku: '',
+      barcode: '',
+      name: '',
+      description: '',
+      category: '',
+      unit: 'piece',
+      reorder_level: 0,
+      image_url: '',
+      initial_quantity: 0,
+      cost_price: 0,
+      markup_percentage: 0,
+      selling_price: 0,
+      supplier_id: '',
+    });
+    setSelectedProduct(null);
+    setScanningBarcode(false);
+    setBarcodeInputBuffer('');
+  }
+
+  async function generateNextSKU() {
+    return await productService.generateNextSku();
+  }
+
+  async function openAddModal() {
+    resetForm();
+    const nextSku = await generateNextSKU();
+    setFormData((prev) => ({ ...prev, sku: nextSku }));
+    setModalMode('add');
+    setShowModal(true);
+  }
+
+  function openEditModal(product: ProductWithStock) {
+    setSelectedProduct(product);
+    setFormData({
+      sku: product.sku,
+      barcode: product.barcode || '',
+      name: product.name,
+      description: product.description || '',
+      category: product.category || '',
+      unit: product.unit,
+      reorder_level: product.reorder_level,
+      image_url: product.image_url || '',
+      initial_quantity: 0,
+      cost_price: 0,
+      markup_percentage: 0,
+      selling_price: 0,
+      supplier_id: '',
+    });
+    setModalMode('edit');
+    setShowModal(true);
+  }
+
+  function openViewModal(product: ProductWithStock) {
+    setSelectedProduct(product);
+    setModalMode('view');
+    setShowAddStockInView(false);
+    setShowModal(true);
+  }
+
+  function openAddStockModal(product: ProductWithStock) {
+    setSelectedProduct(product);
+    setModalMode('view');
+    setShowAddStockInView(true);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    resetForm();
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    try {
+      if (modalMode === 'add') {
+        // Use ProductService to create product
+        const newProduct = await productService.createProduct({
+          sku: formData.sku,
+          barcode: formData.barcode || null,
+          name: formData.name,
+          description: formData.description || null,
+          category: formData.category || null,
+          unit: formData.unit,
+          reorder_level: formData.reorder_level,
+          image_url: formData.image_url || null,
+        });
+
+        // Create initial batch if stock info provided
+        if (formData.initial_quantity > 0 && formData.supplier_id) {
+          const batchNumber = `INIT-${newProduct.sku}-${new Date().getTime().toString().slice(-4)}`;
+          await productService.createBatch({
+            product_id: newProduct.id,
+            batch_number: batchNumber,
+            supplier_id: formData.supplier_id,
+            cost_price: formData.cost_price,
+            markup_percentage: formData.markup_percentage,
+            selling_price: formData.selling_price,
+            initial_quantity: formData.initial_quantity,
+            current_quantity: formData.initial_quantity,
+            received_date: new Date().toISOString().split('T')[0],
+          });
+        }
+
+        alert('Product added successfully!');
+      } else if (modalMode === 'edit' && selectedProduct) {
+        // Use ProductService to update product
+        await productService.updateProduct(selectedProduct.id, {
+          sku: formData.sku,
+          barcode: formData.barcode || null,
+          name: formData.name,
+          description: formData.description || null,
+          category: formData.category || null,
+          unit: formData.unit,
+          reorder_level: formData.reorder_level,
+          image_url: formData.image_url || null,
+        });
+
+        alert('Product updated successfully!');
+      }
+
+      closeModal();
+      refetch();
+    } catch (error: any) {
+      logger.error('Product form submission failed', error);
+      alert(error.message);
+    }
+  }
+
+  async function handlePrintBarcode(product: ProductWithStock) {
+    if (!product.barcode) {
+      const confirmAssign = window.confirm(`No barcode assigned. Would you like to generate one using SKU (${product.sku})?`);
+      if (!confirmAssign) return;
+
+      try {
+        await productService.updateProduct(product.id, { barcode: product.sku });
+        const updatedProduct = { ...product, barcode: product.sku };
+        setBarcodeProduct(updatedProduct);
+        setShowBarcodeModal(true);
+        refetch();
+      } catch (error) {
+        logger.error('Failed to update barcode', error as Error);
+        alert('Failed to assign barcode');
+      }
+    } else {
+      setBarcodeProduct(product);
+      setShowBarcodeModal(true);
+    }
+  }
+
+  async function handleExportCSV() {
+    try {
+      const allProducts = await productService.getAllProducts();
+
+      const csvData = allProducts.flatMap(product => {
+        if (product.batches && product.batches.length > 0) {
+          return product.batches.map(batch => ({
+            product_name: product.name,
+            sku: product.sku,
+            barcode: product.barcode || '',
+            category: product.category || 'Uncategorized',
+            supplier_name: batch.supplier?.name || '',
+            cost_price: batch.cost_price,
+            markup_percentage: batch.markup_percentage,
+            quantity: batch.current_quantity,
+            batch_number: batch.batch_number || '',
+            expiry_date: batch.expiry_date || '',
+            reorder_level: product.reorder_level,
+            unit: product.unit,
+            image_url: product.image_url || ''
+          }));
+        } else {
+          // If no batches, export product with 0 quantity
+          return [{
+            product_name: product.name,
+            sku: product.sku,
+            barcode: product.barcode || '',
+            category: product.category || 'Uncategorized',
+            supplier_name: '',
+            cost_price: 0,
+            markup_percentage: 0,
+            quantity: 0,
+            batch_number: '',
+            expiry_date: '',
+            reorder_level: product.reorder_level,
+            unit: product.unit,
+            image_url: product.image_url || ''
+          }];
+        }
+      });
+
+      const csv = Papa.unparse(csvData);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `products_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      logger.error('Failed to export products', error as Error);
+      alert('Failed to export products. Please try again.');
+    }
+  }
+
+  if (loading && products.length === 0 && page === 1 && !searchTerm) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg text-slate-600">Loading products...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-900">
+          Products {totalCount > 0 && <span className="text-sm font-normal text-slate-500">({totalCount})</span>}
+        </h2>
+
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium"
+              >
+                <Upload className="w-4 h-4" />
+                Import CSV
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-sm font-medium"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+            </div>
+          )}
+          {isAdmin && (
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition"
+            >
+              <Plus className="w-5 h-5" />
+              Add Product
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="flex gap-4">
+          <div className="flex-1 flex items-center gap-3 border border-slate-200 rounded-lg px-3 py-2">
+            <Search className="w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder={
+                searchType === 'name' ? "Search by name (e.g. 'Toyota Filter')..." :
+                  searchType === 'sku' ? "Search by SKU..." :
+                    searchType === 'barcode' ? "Scan barcode..." :
+                      "Search by name, SKU, or barcode..."
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 outline-none text-slate-900"
+            />
+          </div>
+
+          <div className="relative">
+            <select
+              value={stockFilter}
+              onChange={(e) => {
+                setPage(1);
+                setStockFilter(e.target.value as StockFilter);
+              }}
+              className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+            >
+              <option value="all">All Stock</option>
+              <option value="low_stock">Low Stock</option>
+              <option value="out_of_stock">Out of Stock</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+              <Filter className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="relative">
+            <select
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value as SearchType)}
+              className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+            >
+              <option value="all">Smart Search</option>
+              <option value="name">Name Only</option>
+              <option value="sku">SKU Only</option>
+              <option value="barcode">Barcode</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+              <Filter className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <ProductTable
+          products={products as any}
+          onView={openViewModal}
+          onEdit={openEditModal}
+          onAddStock={openAddStockModal}
+          onPrintBarcode={handlePrintBarcode}
+          isAdmin={isAdmin}
+        />
+
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50">
+          <div className="text-sm text-slate-600">
+            Page {page} of {totalPages || 1}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="text-xl font-bold text-slate-900">
+                {modalMode === 'add' ? 'Add Product' : modalMode === 'edit' ? 'Edit Product' : 'Product Details'}
+              </h3>
+            </div>
+
+            {modalMode === 'view' && selectedProduct ? (
+              <ProductDetailsView
+                product={selectedProduct}
+                onClose={closeModal}
+                onUpdate={refetch}
+                defaultShowAddStock={showAddStockInView}
+              />
+            ) : (
+              <ProductForm
+                formData={formData as any}
+                onChange={setFormData as any}
+                onSubmit={handleSubmit}
+                onCancel={closeModal}
+                mode={modalMode as any}
+                scanningBarcode={scanningBarcode}
+                onStartBarcodeScanning={() => setScanningBarcode(true)}
+                suppliers={suppliers}
+                onSupplierAdded={loadSuppliers}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {showBarcodeModal && barcodeProduct && (
+        <BarcodeGenerator
+          barcode={barcodeProduct.barcode || ''}
+          sku={barcodeProduct.sku}
+          productName={barcodeProduct.name}
+          onClose={() => setShowBarcodeModal(false)}
+        />
+      )}
+      {showImportModal && (
+        <ProductImporter
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            setShowImportModal(false);
+            refetch();
+          }}
+        />
+      )}
+    </div>
+  );
+}
