@@ -101,6 +101,19 @@ export class ProductService {
     }
 
     /**
+     * Get batches for a product
+     */
+    async getProductBatches(productId: string): Promise<any[]> {
+        try {
+            logger.debug('Fetching batches for product', { productId });
+            return await this.productRepo.findBatchesByProductId(productId);
+        } catch (error) {
+            logger.error('Failed to fetch product batches', error as Error, { productId });
+            return [];
+        }
+    }
+
+    /**
      * Create a new product
      */
     async createProduct(productData: Partial<Product>): Promise<Product> {

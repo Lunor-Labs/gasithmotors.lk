@@ -18,6 +18,13 @@ export class CustomerRepository extends BaseRepository<Customer> {
     }
 
     /**
+     * Count all active customers
+     */
+    async countActive(): Promise<number> {
+        return this.count({ active: true });
+    }
+
+    /**
      * Find customer by phone number
      */
     async findByPhone(phone: string): Promise<Customer | null> {

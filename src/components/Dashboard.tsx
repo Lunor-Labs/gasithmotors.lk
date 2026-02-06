@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { Package, Users, ShoppingCart, TrendingUp, DollarSign, AlertTriangle, FileText } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { StockFilter } from '../hooks/useProducts';
-import { productService } from '../services';
+import { productService, customerService, salesService } from '../services';
 
 interface DashboardStats {
   totalProducts: number;
@@ -43,30 +42,23 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
 
   async function loadDashboardStats() {
     try {
-      const today = new Date().toISOString().split('T')[0];
-
       const [
-        { count: productCount },
-        { count: customerCount },
-        { data: todaySalesData },
         allProducts,
-        { count: pendingReturnsCount },
-        { data: recentSalesData },
-        { data: salesHistory },
-        { data: saleItemsData }
+        customerCount,
+        todaySales,
+        pendingReturnsCount,
+        recentSalesData,
+        salesHistory,
+        topSellingData
       ] = await Promise.all([
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('active', true),
-        supabase.from('customers').select('*', { count: 'exact', head: true }).eq('active', true),
-        supabase.from('sales').select('total_amount').gte('sale_date', today),
         productService.getAllProducts(),
-        supabase.from('returns').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('sales').select('*, customers(name)').order('created_at', { ascending: false }).limit(5),
-        supabase.from('sales').select('created_at, total_amount').order('created_at', { ascending: true }).limit(50),
-        supabase.from('sale_items').select('quantity, products(name)').gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+        customerService.getCustomerCount(),
+        salesService.getTodaySales(),
+        salesService.getPendingReturnsCount(),
+        salesService.getRecentSales(5),
+        salesService.getSalesHistory(50),
+        salesService.getTopSellingItems(5)
       ]);
-
-      // Cast to any to avoid strict type checking issues with complex joins for now
-      const todayRevenue = (todaySalesData as any[])?.reduce((sum, sale) => sum + Number(sale.total_amount), 0) || 0;
 
       const lowStockList = allProducts.filter(product => {
         return product.total_stock > 0 && product.total_stock <= (product.reorder_level || 0);
@@ -82,20 +74,9 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
         value: Number(sale.total_amount)
       }));
 
-      // Process top selling items
-      const itemMap = new Map<string, number>();
-      (saleItemsData as any[] || []).forEach(item => {
-        const name = item.products?.name || 'Unknown';
-        itemMap.set(name, (itemMap.get(name) || 0) + Number(item.quantity));
-      });
-
-      const sortedItems = Array.from(itemMap.entries())
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 5);
-
+      // Top selling items are already processed by the service
       const colors = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981'];
-      const topSellingWithColors = sortedItems.map((item, index) => ({
+      const topSellingWithColors = (topSellingData as any[]).map((item, index) => ({
         ...item,
         color: colors[index % colors.length]
       }));
@@ -107,10 +88,10 @@ export function Dashboard({ onFilterNavigate }: DashboardProps) {
       setTopSellingItems(topSellingWithColors);
 
       setStats({
-        totalProducts: productCount || 0,
+        totalProducts: allProducts.length,
         totalCustomers: customerCount || 0,
-        todaySales: todaySalesData?.length || 0,
-        todayRevenue,
+        todaySales: todaySales.count,
+        todayRevenue: todaySales.revenue,
         lowStockProducts: lowStockList.length,
         outOfStockProducts: outOfStockList.length,
         pendingReturns: pendingReturnsCount || 0,

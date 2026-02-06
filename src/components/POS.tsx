@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import {
   Search,
   Plus,
@@ -17,7 +16,7 @@ import { CartItemsList } from './pos/CartItemsList';
 
 import { db } from '../lib/db';
 import { SyncStatus } from './pos/SyncStatus';
-import { salesService } from '../services';
+import { salesService, customerService, productService } from '../services'; // Import services
 import { logger } from '../lib/logger';
 
 export function POS() {
@@ -113,50 +112,14 @@ export function POS() {
           const saleObj: any = offlineSale;
           await db.offline_sales.update(saleObj.id!, { status: 'syncing' });
 
-          const { sale, items, batches, customerCredit, commission } = saleObj.sale_data;
-
-          // 1. Insert Sale
-          const { data: saleData, error: saleError } = await (supabase.from('sales') as any)
-            .insert(sale as any)
-            .select()
-            .single();
-          if (saleError) throw saleError;
-          const sData = saleData as any;
-
-          // 2. Insert Items (update sale_id)
-          const saleItems = items.map((item: any) => ({ ...item, sale_id: sData.id }));
-          const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
-          if (itemsError) throw itemsError;
-
-          for (const b of batches) {
-            const { error: bError } = await (supabase
-              .from('product_batches') as any)
-              .update({ current_quantity: b.newQuantity } as any)
-              .eq('id', b.id);
-            if (bError) throw bError;
-          }
-
-          if (customerCredit) {
-            const { error: cError } = await (supabase
-              .from('customers') as any)
-              .update({ current_credit: customerCredit.newCredit } as any)
-              .eq('id', customerCredit.id);
-            if (cError) throw cError;
-          }
-
-          // 5. Insert Commission
-          if (commission) {
-            const { error: comError } = await supabase
-              .from('referral_commissions')
-              .insert({ ...commission, sale_id: sData.id } as any);
-            if (comError) throw comError;
-          }
+          // Sync using service
+          await salesService.syncOfflineSale(saleObj.sale_data);
 
           // Mark as synced
           await db.offline_sales.update(saleObj.id!, { status: 'idle', synced: true });
           await db.offline_sales.delete(saleObj.id!); // Clean up
 
-          console.log(`Synced sale ${sale.sale_number} `);
+          console.log(`Synced sale ${saleObj.sale_data.sale.sale_number} `);
         } catch (err) {
           const saleObj: any = offlineSale;
           console.error(`Failed to sync sale ${saleObj.id}: `, err);
@@ -216,18 +179,13 @@ export function POS() {
   async function loadData() {
     try {
       // Only load customers and agents here, products are handled by the hook
-      const [customersRes, agentsRes] = await Promise.all([
-        (supabase.from('customers') as any)
-          .select('*').order('name'),
-        (supabase.from('referral_agents') as any)
-          .select('*').eq('active', true).order('name'),
+      const [customersList, agentsList] = await Promise.all([
+        customerService.getAllCustomers(),
+        customerService.getAllReferralAgents(),
       ]);
 
-      if (customersRes.error) throw customersRes.error;
-      if (agentsRes.error) throw agentsRes.error;
-
-      setCustomers(customersRes.data || []);
-      setReferralAgents(agentsRes.data || []);
+      setCustomers(customersList);
+      setReferralAgents(agentsList);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -239,32 +197,33 @@ export function POS() {
     // For barcode scan, we might need to search globally if it's not in the current page
     // So we do a direct DB lookup for exact barcode match
     try {
-      const { data: productData, error } = await (supabase.from('products') as any)
-        .select('*')
-        .eq('barcode', barcode)
-        .eq('active', true)
-        .single();
+      const productData = await productService.findByBarcode(barcode);
 
-      if (error || !productData) {
+      if (!productData) {
         alert('Product not found with this barcode');
         return;
       }
 
       // Fetch batches for this product
-      const { data: batches } = await (supabase.from('product_batches') as any)
-        .select('*, supplier:supplier_id(name)')
-        .eq('product_id', productData.id)
-        .gt('current_quantity', 0)
-        .order('received_date');
+      const batches = await productService.getProductBatches(productData.id);
+
+      // Filter accessible batches (gt 0)
+      const accessibleBatches = batches.filter((b: any) => b.current_quantity > 0)
+        .sort((a: any, b: any) => new Date(a.received_date).getTime() - new Date(b.received_date).getTime());
+
+      // Calculate total stock
+      const totalStock = accessibleBatches.reduce((acc: number, b: any) => acc + b.current_quantity, 0);
 
       const productWithBatches: ProductWithBatches = {
         ...productData,
-        batches: batches || []
+        batches: accessibleBatches,
+        total_stock: totalStock
       };
 
       handleProductSelect(productWithBatches);
 
     } catch (err) {
+      console.error(err);
       alert('Error searching product');
     }
   }
@@ -377,18 +336,13 @@ export function POS() {
     e.preventDefault();
 
     try {
-      const { data, error } = await (supabase.from('customers') as any)
-        .insert({
-          name: customerFormData.name,
-          phone: customerFormData.phone || null,
-          email: customerFormData.email || null,
-          address: customerFormData.address || null,
-          credit_limit: customerFormData.credit_limit,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await customerService.createCustomer({
+        name: customerFormData.name,
+        phone: customerFormData.phone || undefined,
+        email: customerFormData.email || undefined,
+        address: customerFormData.address || undefined,
+        credit_limit: customerFormData.credit_limit,
+      });
 
       setShowCustomerModal(false);
       setCustomerFormData({
@@ -409,18 +363,13 @@ export function POS() {
     e.preventDefault();
 
     try {
-      const { data, error } = await (supabase.from('referral_agents') as any)
-        .insert({
-          name: agentFormData.name,
-          phone: agentFormData.phone || null,
-          email: agentFormData.email || null,
-          address: agentFormData.address || null,
-          commission_rate: agentFormData.commission_rate,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await customerService.createReferralAgent({
+        name: agentFormData.name,
+        phone: agentFormData.phone || undefined,
+        email: agentFormData.email || undefined,
+        address: agentFormData.address || undefined,
+        commission_rate: agentFormData.commission_rate,
+      });
 
       setShowAgentModal(false);
       setAgentFormData({

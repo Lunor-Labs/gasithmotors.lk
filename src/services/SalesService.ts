@@ -405,6 +405,140 @@ export class SalesService {
     }
 
     /**
+     * Get today's sales
+     */
+    async getTodaySales() {
+        try {
+            const sales = await this.saleRepo.findTodaySales();
+
+            const totalAmount = sales.reduce((sum, sale) => sum + sale.total_amount, 0);
+
+            return {
+                count: sales.length,
+                revenue: totalAmount,
+                sales
+            };
+        } catch (error) {
+            logger.error('Failed to get today sales', error as Error);
+            throw new Error('Unable to load today\'s sales');
+        }
+    }
+
+    /**
+     * Get recent sales
+     */
+    async getRecentSales(limit: number = 5) {
+        try {
+            return await this.saleRepo.findRecentSales(limit);
+        } catch (error) {
+            logger.error('Failed to fetch recent sales', error as Error);
+            throw new Error('Unable to fetch recent sales');
+        }
+    }
+
+    /**
+     * Get sales history for chart
+     */
+    async getSalesHistory(limit: number = 50) {
+        try {
+            return await this.saleRepo.findSalesHistory(limit);
+        } catch (error) {
+            logger.error('Failed to fetch sales history', error as Error);
+            throw new Error('Unable to fetch sales history');
+        }
+    }
+
+    /**
+     * Get top selling items
+     */
+    async getTopSellingItems(limit: number = 5) {
+        try {
+            const date = new Date();
+            const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
+
+            const adapter = (this.saleRepo as any).adapter;
+            const items = await adapter.query('sale_items', {
+                select: 'quantity, products(name)',
+                where: [{ field: 'created_at', operator: '>=', value: firstDayOfMonth }]
+            });
+
+            // Aggregate items
+            const itemMap = new Map<string, number>();
+            (items as any[]).forEach(item => {
+                const name = item.products?.name || 'Unknown';
+                itemMap.set(name, (itemMap.get(name) || 0) + Number(item.quantity));
+            });
+
+            const sortedItems = Array.from(itemMap.entries())
+                .map(([name, value]) => ({ name, value }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, limit);
+
+            return sortedItems;
+        } catch (error) {
+            logger.error('Failed to fetch top selling items', error as Error);
+            throw new Error('Unable to fetch top selling items');
+        }
+    }
+
+    /**
+     * Get returns count pending
+     */
+    async getPendingReturnsCount(): Promise<number> {
+        try {
+            const adapter = (this.saleRepo as any).adapter;
+            const returns = await adapter.query('returns', {
+                where: [{ field: 'status', operator: '=', value: 'pending' }]
+            });
+            return returns.length;
+        } catch (error) {
+            logger.error('Failed to count pending returns', error as Error);
+            return 0;
+        }
+    }
+
+
+
+    /**
+     * Sync offline sale
+     */
+    async syncOfflineSale(data: any): Promise<void> {
+        try {
+            const { sale, items, batches, customerCredit, commission } = data;
+
+            // 1. Create Sale and Items
+            const createdSale = await this.saleRepo.createWithItems(sale, items);
+            logger.info('Offline sale synced', { saleId: createdSale.id, saleNumber: createdSale.sale_number });
+
+            // 2. Update Batches (Stock)
+            if (batches && Array.isArray(batches)) {
+                for (const b of batches) {
+                    await this.productRepo.updateStock(b.id, b.newQuantity);
+                }
+            }
+
+            // 3. Update Customer Credit
+            if (customerCredit) {
+                await this.customerRepo.update(customerCredit.id, {
+                    current_credit: customerCredit.newCredit,
+                    updated_at: new Date().toISOString()
+                });
+            }
+
+            // 4. Client Commission
+            if (commission) {
+                await this.saleRepo.createCommission({
+                    ...commission,
+                    sale_id: createdSale.id
+                });
+            }
+        } catch (error) {
+            logger.error('Failed to sync offline sale', error as Error);
+            throw error;
+        }
+    }
+
+    /**
      * Generate unique sale number
      */
     private async generateSaleNumber(): Promise<string> {

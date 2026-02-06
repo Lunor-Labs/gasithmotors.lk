@@ -145,7 +145,10 @@ export class ProductRepository extends BaseRepository<Product> {
     /**
      * Find batches for a product
      */
-    private async findBatchesByProductId(productId: string): Promise<ProductBatch[]> {
+    /**
+     * Find batches for a product
+     */
+    async findBatchesByProductId(productId: string): Promise<ProductBatch[]> {
         return this.adapter.query<ProductBatch>('product_batches', {
             select: '*, supplier:suppliers(name)', // Join supplier information
             where: [{ field: 'product_id', operator: '=', value: productId }],

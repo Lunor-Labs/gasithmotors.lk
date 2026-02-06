@@ -74,6 +74,58 @@ export class SaleRepository extends BaseRepository<Sale> {
     }
 
     /**
+     * Find today's sales
+     */
+    async findTodaySales(): Promise<Sale[]> {
+        const today = new Date().toISOString().split('T')[0];
+        return this.query({
+            where: [{ field: 'sale_date', operator: '>=', value: today }]
+        });
+    }
+
+    /**
+     * Find recent sales
+     */
+    async findRecentSales(limit: number): Promise<Sale[]> {
+        return this.adapter.query<Sale>('sales', {
+            select: '*, customers(name)',
+            orderBy: [{ field: 'created_at', direction: 'desc' }],
+            limit
+        });
+    }
+
+    /**
+     * Find sales history
+     */
+    async findSalesHistory(limit: number): Promise<Partial<Sale>[]> {
+        return this.query({
+            select: 'created_at, total_amount',
+            orderBy: [{ field: 'created_at', direction: 'asc' }],
+            limit
+        });
+    }
+
+    /**
+     * Find top selling items
+     */
+    async findTopSellingItems(startDate: string): Promise<any[]> {
+        return this.adapter.query('sale_items', {
+            select: 'quantity, products(name)',
+            where: [{ field: 'created_at', operator: '>=', value: startDate }]
+        });
+    }
+
+    /**
+     * Count pending returns
+     */
+    async countPendingReturns(): Promise<number> {
+        const results = await this.adapter.query('returns', {
+            where: [{ field: 'status', operator: '=', value: 'pending' }]
+        });
+        return results.length;
+    }
+
+    /**
      * Find sales by date range
      */
     async findByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
