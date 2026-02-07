@@ -96,7 +96,14 @@ export function useProducts(
           case 'name':
             collection = db.products.filter(p => {
               const words = query.split(/\s+/);
-              return words.every(word => p.name.toLowerCase().includes(word));
+              // Original multi-word AND search
+              const multiWordMatch = words.every(word => p.name.toLowerCase().includes(word));
+              if (multiWordMatch) return true;
+
+              // Fallback: Space-insensitive normalization check
+              const normalizedName = p.name.toLowerCase().replace(/\s+/g, '');
+              const normalizedQuery = query.replace(/\s+/g, '');
+              return normalizedName.includes(normalizedQuery);
             });
             break;
           case 'all':
@@ -110,7 +117,9 @@ export function useProducts(
               collection = db.products.filter(p =>
                 p.name.toLowerCase().includes(query) ||
                 p.sku.toLowerCase() === query ||
-                (typeof p.barcode === 'string' && p.barcode.includes(query))
+                (typeof p.barcode === 'string' && p.barcode.includes(query)) ||
+                // Fallback: Space-insensitive normalization check for single word
+                p.name.toLowerCase().replace(/\s+/g, '').includes(query.replace(/\s+/g, ''))
               );
             }
             break;
