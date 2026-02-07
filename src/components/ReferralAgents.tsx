@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Database } from '../lib/database.types';
-import { Search, Plus, UserCheck, DollarSign, Edit, CheckCircle } from 'lucide-react';
+import { Plus, UserCheck, DollarSign, Edit, CheckCircle, PackageOpen } from 'lucide-react';
 import { customerService, salesService } from '../services';
+import { useToast } from '../contexts/ToastContext';
+import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
 
 type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
 
@@ -19,6 +21,7 @@ interface Commission {
 }
 
 export function ReferralAgents() {
+  const { showToast } = useToast();
   const [agents, setAgents] = useState<ReferralAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,6 +49,9 @@ export function ReferralAgents() {
     end: new Date().toISOString().split('T')[0], // Today
   });
 
+  const [showConfirmPayoutModal, setShowConfirmPayoutModal] = useState(false);
+  const [commissionsToPayout, setCommissionsToPayout] = useState<Commission[]>([]);
+
   useEffect(() => {
     loadAgents();
   }, []);
@@ -62,6 +68,7 @@ export function ReferralAgents() {
       setAgents((data as any) || []);
     } catch (error) {
       console.error('Error loading referral agents:', error);
+      showToast('Failed to load referral agents', 'error');
     } finally {
       setLoading(false);
     }
@@ -81,34 +88,37 @@ export function ReferralAgents() {
       setCommissions(formattedData);
     } catch (error) {
       console.error('Error loading commissions:', error);
-      alert('Failed to load commissions');
+      showToast('Failed to load commissions', 'error');
     } finally {
       setLoadingCommissions(false);
     }
   }
 
-  async function handlePayload(filteredCommissions: Commission[]) {
+  async function handlePayout(filteredCommissions: Commission[]) {
     if (!filteredCommissions.length) {
-      alert('No commissions selected for payout');
+      showToast('No commissions selected for payout', 'warning');
       return;
     }
+    setCommissionsToPayout(filteredCommissions);
+    setShowConfirmPayoutModal(true);
+  }
 
-    const totalAmount = filteredCommissions.reduce((sum, c) => sum + c.commission_amount, 0);
-
-    if (!confirm(`Are you sure you want to payout LKR ${totalAmount.toFixed(2)} for ${filteredCommissions.length} transactions?`)) {
-      return;
-    }
+  async function handlePayoutConfirmed() {
+    if (commissionsToPayout.length === 0) return;
 
     try {
-      const idsToUpdate = filteredCommissions.map(c => c.id);
-      await salesService.payoutCommissions(idsToUpdate);
+      const commissionIds = commissionsToPayout.map((c: Commission) => c.id);
+      await salesService.payoutCommissions(commissionIds);
 
-      alert('Payout recorded successfully!');
+      showToast('Commissions paid out successfully!', 'success');
       if (selectedAgent) {
         loadCommissions(selectedAgent.id);
       }
     } catch (error: any) {
-      alert('Error recording payout: ' + error.message);
+      showToast('Error processing payout: ' + error.message, 'error');
+    } finally {
+      setShowConfirmPayoutModal(false);
+      setCommissionsToPayout([]);
     }
   }
 
@@ -118,29 +128,19 @@ export function ReferralAgents() {
     try {
       if (modalMode === 'add') {
         await customerService.createReferralAgent({
-          name: formData.name,
-          type: formData.type,
-          phone: formData.phone || null,
-          email: formData.email || null,
-          address: formData.address || null,
-          commission_rate: formData.commission_rate,
+          ...formData
         });
+        showToast('Referral agent added successfully!', 'success');
       } else if (selectedAgent) {
-        await customerService.updateReferralAgent(selectedAgent.id, {
-          name: formData.name,
-          type: formData.type,
-          phone: formData.phone || null,
-          email: formData.email || null,
-          address: formData.address || null,
-          commission_rate: formData.commission_rate,
-        });
+        await customerService.updateReferralAgent(selectedAgent.id, formData);
+        showToast('Referral agent updated successfully!', 'success');
       }
 
       setShowModal(false);
       resetForm();
       loadAgents();
     } catch (error: any) {
-      alert(error.message);
+      showToast(error.message || 'Failed to save agent', 'error');
     }
   }
 
@@ -166,7 +166,7 @@ export function ReferralAgents() {
     setSelectedAgent(agent);
     setFormData({
       name: agent.name,
-      type: (agent.type || 'individual') as 'garage' | 'individual',
+      type: agent.type as any,
       phone: agent.phone || '',
       email: agent.email || '',
       address: agent.address || '',
@@ -183,31 +183,12 @@ export function ReferralAgents() {
   }
 
   const filteredAgents = agents.filter((agent) =>
-    agent.name.toLowerCase().includes(searchTerm.toLowerCase())
+    agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (agent.phone && agent.phone.includes(searchTerm))
   );
 
-  // Commission Calculations
-  const pendingCommissions = commissions.filter(c => c.status === 'pending');
-  const paidCommissions = commissions.filter(c => c.status === 'paid');
-
-  const totalEarned = commissions.reduce((sum, c) => sum + c.commission_amount, 0);
-  const totalPaid = paidCommissions.reduce((sum, c) => sum + c.commission_amount, 0);
-  const totalPending = pendingCommissions.reduce((sum, c) => sum + c.commission_amount, 0);
-
-  // Filter pending by date range
-  const filteredPendingCommissions = pendingCommissions.filter(c => {
-    const commissionDate = new Date(c.created_at).toISOString().split('T')[0];
-    return commissionDate >= dateRange.start && commissionDate <= dateRange.end;
-  });
-
-  const filteredPendingTotal = filteredPendingCommissions.reduce((sum, c) => sum + c.commission_amount, 0);
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
-      </div>
-    );
+    return <LoadingSpinner message="Loading referral agents..." />;
   }
 
   return (
@@ -215,383 +196,354 @@ export function ReferralAgents() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Referral Agents</h2>
-          <p className="text-slate-600 mt-1">Manage garages and individuals who refer customers</p>
+          <p className="text-slate-600 mt-1">Manage garages and individual referral partners</p>
         </div>
         <button
           onClick={openAddModal}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition shadow-sm"
         >
           <Plus className="w-5 h-5" />
           Add Agent
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-        <div className="flex items-center gap-2">
-          <Search className="w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search referral agents..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 outline-none text-slate-900"
-          />
-        </div>
-      </div>
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search agents by name or phone..."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredAgents.map((agent) => (
-          <div
-            key={agent.id}
-            className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-slate-100 p-2 rounded-lg">
-                  <UserCheck className="w-6 h-6 text-slate-600" />
+      {filteredAgents.length === 0 ? (
+        <EmptyState
+          icon={UserCheck}
+          title="No agents found"
+          description={searchTerm ? `No agents match "${searchTerm}"` : "You haven't added any referral agents yet."}
+          action={!searchTerm ? { label: 'Add Your First Agent', onClick: openAddModal } : undefined}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredAgents.map((agent) => (
+            <div
+              key={agent.id}
+              className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3 text-left">
+                  <div className="bg-slate-100 p-2 rounded-lg">
+                    <UserCheck className="w-6 h-6 text-slate-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900">{agent.name}</h3>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 uppercase tracking-tight">
+                      {agent.type}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-slate-900">{agent.name}</h3>
-                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 mt-1">
-                    {agent.type === 'garage' ? 'Garage' : 'Individual'}
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => openCommissionModal(agent)}
-                  className="p-1 hover:bg-green-50 rounded transition text-green-600"
-                  title="Manage Commissions"
-                >
-                  <DollarSign className="w-4 h-4" />
-                </button>
                 <button
                   onClick={() => openEditModal(agent)}
                   className="p-1 hover:bg-slate-100 rounded transition"
-                  title="Edit Agent"
                 >
                   <Edit className="w-4 h-4 text-slate-600" />
                 </button>
               </div>
-            </div>
 
-            <div className="space-y-2 text-sm mb-4">
-              {agent.phone && (
-                <div className="flex items-center gap-2 text-slate-600">
-                  <span className="font-medium">Phone:</span>
-                  <span>{agent.phone}</span>
-                </div>
-              )}
-              {agent.email && (
-                <div className="flex items-center gap-2 text-slate-600">
-                  <span className="font-medium">Email:</span>
-                  <span>{agent.email}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-4 border-t border-slate-200">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Commission Rate</span>
-                <span className="text-lg font-bold text-slate-900">{agent.commission_rate}%</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Edit/Add Agent Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">
-                {modalMode === 'add' ? 'Add Referral Agent' : 'Edit Referral Agent'}
-              </h3>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as 'garage' | 'individual' })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  >
-                    <option value="individual">Individual</option>
-                    <option value="garage">Garage</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Commission Rate (%) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.commission_rate}
-                    onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) })}
-                    required
-                    min="0"
-                    max="100"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Address
-                  </label>
-                  <textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
-                  />
+              <div className="space-y-2 text-sm text-left">
+                {agent.phone && (
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <span className="font-medium">Phone:</span>
+                    <span>{agent.phone}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-slate-600 text-left">
+                  <span className="font-medium">Commission Rate:</span>
+                  <span>{agent.commission_rate}%</span>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="mt-6 pt-4 border-t border-slate-100">
                 <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  onClick={() => openCommissionModal(agent)}
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition border border-slate-200"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
-                >
-                  {modalMode === 'add' ? 'Add Agent' : 'Save Changes'}
+                  <DollarSign className="w-4 h-4 text-green-600" />
+                  Manage Commissions
                 </button>
               </div>
-            </form>
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Commission Details Modal */}
-      {showCommissionModal && selectedAgent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-start">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Commission Management</h3>
-                <p className="text-slate-600">{selectedAgent.name}</p>
-              </div>
-              <button
-                onClick={() => setShowCommissionModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-full transition"
+      {/* Agent Modal */}
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={modalMode === 'add' ? 'Add Referral Agent' : 'Edit Referral Agent'}
+        size="2xl"
+      >
+        <form onSubmit={handleSubmit} className="p-6 text-left">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Agent Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                placeholder="Enter garage or name"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={formData.type}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
               >
-                <span className="text-2xl">&times;</span>
-              </button>
+                <option value="individual">Individual</option>
+                <option value="garage">Garage</option>
+              </select>
             </div>
 
-            <div className="p-6 bg-slate-50 border-b border-slate-200">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Total Earned</p>
-                  <p className="text-xl font-bold text-slate-900 mt-1">LKR {totalEarned.toFixed(2)}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Total Paid</p>
-                  <p className="text-xl font-bold text-green-600 mt-1">LKR {totalPaid.toFixed(2)}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Pending Balance</p>
-                  <p className="text-xl font-bold text-orange-600 mt-1">LKR {totalPending.toFixed(2)}</p>
-                </div>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Commission Rate (%) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                value={formData.commission_rate}
+                onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })}
+                required
+                min="0"
+                max="100"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              />
             </div>
 
-            <div className="flex border-b border-slate-200">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                placeholder="Enter phone number"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                placeholder="Enter email address"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Address
+              </label>
+              <textarea
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                rows={2}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                placeholder="Enter address"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 text-left">
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              className="px-4 py-2 border border-slate-300 bg-white rounded-lg hover:bg-slate-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+            >
+              {modalMode === 'add' ? 'Add Agent' : 'Update Agent'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Commissions Modal */}
+      <Modal
+        isOpen={showCommissionModal}
+        onClose={() => setShowCommissionModal(false)}
+        title={selectedAgent ? `Commissions: ${selectedAgent.name}` : 'Commissions'}
+        size="4xl"
+      >
+        <div className="flex flex-col h-full text-left">
+          <div className="p-4 border-b border-slate-200">
+            <div className="flex bg-slate-100 p-1 rounded-lg w-fit">
               <button
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition ${activeTab === 'pending'
-                  ? 'border-slate-900 text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
                 onClick={() => setActiveTab('pending')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${activeTab === 'pending' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                Pending Commissions
+                Pending
               </button>
               <button
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition ${activeTab === 'history'
-                  ? 'border-slate-900 text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
                 onClick={() => setActiveTab('history')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${activeTab === 'history' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                Payout History
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              {loadingCommissions ? (
-                <div className="flex justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
-                </div>
-              ) : activeTab === 'pending' ? (
-                <div className="space-y-6">
-                  <div className="flex items-end gap-4 p-4 bg-slate-50 rounded-lg">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">From</label>
-                      <input
-                        type="date"
-                        value={dateRange.start}
-                        onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                        className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">To</label>
-                      <input
-                        type="date"
-                        value={dateRange.end}
-                        onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                        className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
-                      />
-                    </div>
-                    <div className="flex-1 text-right">
-                      <p className="text-sm text-slate-500">Payable Amount (Filtered)</p>
-                      <p className="text-lg font-bold text-slate-900">LKR {filteredPendingTotal.toFixed(2)}</p>
-                    </div>
-                    <button
-                      onClick={() => handlePayload(filteredPendingCommissions)}
-                      disabled={filteredPendingTotal === 0}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Record Payout
-                    </button>
-                  </div>
-
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Sale ID</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Sale Amount</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Commission</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {filteredPendingCommissions.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-slate-500">No pending commissions in this period</td>
-                          </tr>
-                        ) : (
-                          filteredPendingCommissions.map(c => (
-                            <tr key={c.id}>
-                              <td className="px-4 py-2 text-sm text-slate-900">
-                                {new Date(c.created_at).toLocaleDateString()}
-                              </td>
-                              <td className="px-4 py-2 text-sm text-slate-600">
-                                #{c.sale?.sale_number}
-                              </td>
-                              <td className="px-4 py-2 text-sm text-slate-600 text-right">
-                                LKR {c.sale_amount.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2 text-sm font-medium text-orange-600 text-right">
-                                LKR {c.commission_amount.toFixed(2)}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                // Payout History Tab
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Paid Date</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Sale ID</th>
-                        <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Amount Paid</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {paidCommissions.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="px-4 py-8 text-center text-slate-500">No payment history found</td>
-                        </tr>
-                      ) : (
-                        paidCommissions.map(c => (
-                          <tr key={c.id}>
-                            <td className="px-4 py-2 text-sm text-slate-900">
-                              {c.payment_date ? new Date(c.payment_date).toLocaleDateString() : '-'}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-slate-600">
-                              #{c.sale?.sale_number}
-                            </td>
-                            <td className="px-4 py-2 text-sm font-medium text-green-600 text-right">
-                              LKR {c.commission_amount.toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => setShowCommissionModal(false)}
-                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
-              >
-                Close
+                Payment History
               </button>
             </div>
           </div>
+
+          <div className="p-6 flex-1 overflow-y-auto">
+            {loadingCommissions ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+              </div>
+            ) : (
+              <div>
+                {activeTab === 'pending' ? (
+                  <div>
+                    {commissions.filter(c => c.status === 'pending').length === 0 ? (
+                      <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                        <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                        <p className="text-slate-900 font-medium">No pending commissions</p>
+                        <p className="text-slate-500 text-sm">All commissions for this agent have been paid.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h4 className="font-semibold text-slate-900">Total Pending: LKR {commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + c.commission_amount, 0).toFixed(2)}</h4>
+                          <button
+                            onClick={() => handlePayout(commissions.filter(c => c.status === 'pending'))}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-sm"
+                          >
+                            <DollarSign className="w-4 h-4" />
+                            Payout All Pending
+                          </button>
+                        </div>
+                        <div className="border border-slate-200 rounded-lg overflow-hidden">
+                          <table className="w-full">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Date</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Sale #</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Sale Amount</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Commission</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 text-left">
+                              {commissions.filter(c => c.status === 'pending').map((c) => (
+                                <tr key={c.id}>
+                                  <td className="px-4 py-3 text-sm text-slate-600 text-left">{new Date(c.created_at).toLocaleDateString()}</td>
+                                  <td className="px-4 py-3 text-sm font-medium text-slate-900 text-left">{c.sale?.sale_number}</td>
+                                  <td className="px-4 py-3 text-sm text-slate-600 text-right">LKR {c.sale_amount.toFixed(2)}</td>
+                                  <td className="px-4 py-3 text-sm font-bold text-slate-900 text-right">LKR {c.commission_amount.toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    {commissions.filter(c => c.status === 'paid').length === 0 ? (
+                      <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                        <PackageOpen className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                        <p className="text-slate-900 font-medium">No payment history</p>
+                        <p className="text-slate-500 text-sm">No commissions have been paid out yet.</p>
+                      </div>
+                    ) : (
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Payment Date</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Sale #</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount Paid</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 text-left">
+                            {commissions.filter(c => c.status === 'paid').map((c) => (
+                              <tr key={c.id}>
+                                <td className="px-4 py-3 text-sm text-slate-600 text-left">{c.payment_date ? new Date(c.payment_date).toLocaleDateString() : 'N/A'}</td>
+                                <td className="px-4 py-3 text-sm text-slate-900 text-left">{c.sale?.sale_number}</td>
+                                <td className="px-4 py-3 text-sm font-medium text-slate-900 text-right">LKR {c.commission_amount.toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t border-slate-200 flex justify-end text-left">
+            <button
+              onClick={() => setShowCommissionModal(false)}
+              className="px-4 py-2 border border-slate-300 bg-white rounded-lg hover:bg-slate-50 transition"
+            >
+              Close
+            </button>
+          </div>
         </div>
-      )}
+      </Modal>
+
+      {/* Payout Confirmation Modal */}
+      <Modal
+        isOpen={showConfirmPayoutModal}
+        onClose={() => setShowConfirmPayoutModal(false)}
+        title="Confirm Payout"
+        size="md"
+      >
+        <div className="p-6 text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <DollarSign className="w-8 h-8 text-green-600" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Commission Payout</h3>
+          <p className="text-slate-600 mb-6">
+            Are you sure you want to payout{' '}
+            <span className="font-bold text-slate-900">
+              LKR {commissionsToPayout.reduce((sum: number, c: Commission) => sum + c.commission_amount, 0).toFixed(2)}
+            </span>{' '}
+            for <span className="font-bold text-slate-900">{commissionsToPayout.length}</span> transactions?
+            This action cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowConfirmPayoutModal(false)}
+              className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePayoutConfirmed}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-sm"
+            >
+              Confirm Payout
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

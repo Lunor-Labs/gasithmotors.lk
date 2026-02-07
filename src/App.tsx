@@ -13,6 +13,8 @@ import { SalesHistory } from './components/SalesHistory';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { StockFilter } from './hooks/useProducts';
+import { ToastProvider } from './contexts/ToastContext';
+import { ToastContainer } from './components/ui';
 
 function AppContent() {
   const { user, profile, loading } = useAuth();
@@ -62,7 +64,10 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+        <ToastContainer />
+      </ToastProvider>
     </AuthProvider>
   );
 }

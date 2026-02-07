@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { PRODUCT_UNITS } from '../../utils/constants';
 import { SupplierForm } from '../suppliers/SupplierForm';
+import { useToast } from '../../contexts/ToastContext';
 
 interface ProductFormData {
   sku: string;
@@ -45,6 +46,7 @@ export function ProductForm({
   onSupplierAdded,
 }: ProductFormProps) {
   const [showQuickAddSupplier, setShowQuickAddSupplier] = useState(false);
+  const { showToast } = useToast();
 
   const handleQuickAddSupplier = async (data: any) => {
     try {
@@ -67,7 +69,7 @@ export function ProductForm({
       onChange({ ...formData, supplier_id: (newSupplier as any).id });
       setShowQuickAddSupplier(false);
     } catch (error: any) {
-      alert('Error adding supplier: ' + error.message);
+      showToast('Error adding supplier: ' + error.message, 'error');
     }
   };
 

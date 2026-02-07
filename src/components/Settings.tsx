@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { KeyRound, UserPlus, Users, Check, X } from 'lucide-react';
 import { Database } from '../lib/database.types';
@@ -8,6 +9,7 @@ type UserProfile = Database['public']['Tables']['user_profiles']['Row'];
 
 export function Settings() {
   const { profile, createUser } = useAuth();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
 
@@ -110,15 +112,16 @@ export function Settings() {
 
   async function toggleUserStatus(userId: string, currentStatus: boolean) {
     try {
-      const { error } = await supabase
-        .from('user_profiles')
+      const { error } = await (supabase
+        .from('user_profiles') as any)
         .update({ active: !currentStatus })
         .eq('id', userId);
 
       if (error) throw error;
       loadUsers();
+      showToast(`User ${!currentStatus ? 'activated' : 'deactivated'} successfully`, 'success');
     } catch (error: any) {
-      alert(error.message || 'Failed to update user status');
+      showToast(error.message || 'Failed to update user status', 'error');
     }
   }
 
@@ -173,11 +176,10 @@ export function Settings() {
             </div>
 
             {passwordMessage && (
-              <div className={`text-sm p-3 rounded-lg ${
-                passwordMessage.includes('success')
-                  ? 'bg-green-50 text-green-700'
-                  : 'bg-red-50 text-red-700'
-              }`}>
+              <div className={`text-sm p-3 rounded-lg ${passwordMessage.includes('success')
+                ? 'bg-green-50 text-green-700'
+                : 'bg-red-50 text-red-700'
+                }`}>
                 {passwordMessage}
               </div>
             )}
@@ -248,11 +250,10 @@ export function Settings() {
             </div>
 
             {cashierMessage && (
-              <div className={`text-sm p-3 rounded-lg ${
-                cashierMessage.includes('success')
-                  ? 'bg-green-50 text-green-700'
-                  : 'bg-red-50 text-red-700'
-              }`}>
+              <div className={`text-sm p-3 rounded-lg ${cashierMessage.includes('success')
+                ? 'bg-green-50 text-green-700'
+                : 'bg-red-50 text-red-700'
+                }`}>
                 {cashierMessage}
               </div>
             )}
@@ -296,20 +297,18 @@ export function Settings() {
                   <td className="py-3 px-4 text-sm text-slate-900">{user.full_name}</td>
                   <td className="py-3 px-4 text-sm text-slate-600">{user.email}</td>
                   <td className="py-3 px-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      user.role === 'admin'
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-700'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-700'
+                      }`}>
                       {user.role}
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      user.active
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.active
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-700'
+                      }`}>
                       {user.active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -317,11 +316,10 @@ export function Settings() {
                     {user.id !== profile?.id && (
                       <button
                         onClick={() => toggleUserStatus(user.id, user.active)}
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition ${
-                          user.active
-                            ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                            : 'bg-green-50 text-green-700 hover:bg-green-100'
-                        }`}
+                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition ${user.active
+                          ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                          : 'bg-green-50 text-green-700 hover:bg-green-100'
+                          }`}
                       >
                         {user.active ? (
                           <>
