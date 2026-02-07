@@ -4,7 +4,9 @@ import { ProductImage } from '../ProductImage';
 import { Plus } from 'lucide-react';
 import { SupplierForm } from '../suppliers/SupplierForm';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supplierService, productService } from '../../services';
+import { Modal } from '../ui';
 
 interface ProductDetailsViewProps {
   product: ProductWithStock;
@@ -15,6 +17,7 @@ interface ProductDetailsViewProps {
 
 export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddStock = false }: ProductDetailsViewProps) {
   const { profile } = useAuth();
+  const { showToast } = useToast();
   const isAdmin = profile?.role === 'admin';
   const [showAddStock, setShowAddStock] = useState(defaultShowAddStock);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -54,8 +57,9 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
       await loadSuppliers();
       setStockFormData({ ...stockFormData, supplier_id: newSupplier.id });
       setShowQuickAddSupplier(false);
+      showToast('Supplier added successfully!', 'success');
     } catch (error: any) {
-      alert('Error adding supplier: ' + error.message);
+      showToast('Error adding supplier: ' + error.message, 'error');
     }
   };
 
@@ -75,7 +79,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
         received_date: new Date().toISOString().split('T')[0],
       });
 
-      alert('Stock added successfully!');
+      showToast('Stock added successfully!', 'success');
       setShowAddStock(false);
       setStockFormData({
         supplier_id: '',
@@ -86,7 +90,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
       });
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      alert(error.message);
+      showToast(error.message || 'Failed to add stock', 'error');
     }
   }
 
@@ -285,20 +289,18 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
         </div>
       </div>
 
-      {showQuickAddSupplier && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4 text-left font-normal">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-xl">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">Quick Add Supplier</h3>
-            </div>
-            <SupplierForm
-              mode="add"
-              onSubmit={handleQuickAddSupplier}
-              onCancel={() => setShowQuickAddSupplier(false)}
-            />
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={showQuickAddSupplier}
+        onClose={() => setShowQuickAddSupplier(false)}
+        title="Quick Add Supplier"
+        size="2xl"
+      >
+        <SupplierForm
+          mode="add"
+          onSubmit={handleQuickAddSupplier}
+          onCancel={() => setShowQuickAddSupplier(false)}
+        />
+      </Modal>
     </>
   );
 }

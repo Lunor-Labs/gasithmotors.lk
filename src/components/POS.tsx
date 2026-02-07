@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useProducts, SearchType } from '../hooks/useProducts';
 import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
 import { Invoice } from './Invoice';
@@ -21,6 +22,7 @@ import { logger } from '../lib/logger';
 
 export function POS() {
   const { profile } = useAuth();
+  const { showToast } = useToast();
 
   // Pagination & Search State
   const [page, setPage] = useState(1);
@@ -200,7 +202,7 @@ export function POS() {
       const productData = await productService.findByBarcode(barcode);
 
       if (!productData) {
-        alert('Product not found with this barcode');
+        showToast('Product not found with this barcode', 'error');
         return;
       }
 
@@ -224,13 +226,13 @@ export function POS() {
 
     } catch (err) {
       console.error(err);
-      alert('Error searching product');
+      showToast('Error searching product', 'error');
     }
   }
 
   function handleProductSelect(product: ProductWithBatches) {
     if (product.batches.length === 0) {
-      alert('No stock available for this product');
+      showToast('No stock available for this product', 'warning');
       return;
     }
 
@@ -252,7 +254,7 @@ export function POS() {
       const newQuantity = newCart[existingItemIndex].quantity + quantity;
 
       if (newQuantity > batch.current_quantity) {
-        alert(`Only ${batch.current_quantity} units available`);
+        showToast(`Only ${batch.current_quantity} units available`, 'warning');
         return;
       }
 
@@ -285,7 +287,7 @@ export function POS() {
     }
 
     if (newQuantity > newCart[index].batch.current_quantity) {
-      alert(`Only ${newCart[index].batch.current_quantity} units available`);
+      showToast(`Only ${newCart[index].batch.current_quantity} units available`, 'warning');
       return;
     }
 
@@ -355,7 +357,7 @@ export function POS() {
       loadData();
       setSelectedCustomer(data);
     } catch (error: any) {
-      alert(error.message);
+      showToast(`Error creating customer: ${error.message}`, 'error');
     }
   }
 
@@ -382,33 +384,33 @@ export function POS() {
       loadData();
       setSelectedReferralAgent(data);
     } catch (error: any) {
-      alert(error.message);
+      showToast(`Error creating agent: ${error.message}`, 'error');
     }
   }
 
-  async function completeSale() {
+  async function handleCompleteSale() {
     if (cart.length === 0) {
-      alert('Cart is empty');
+      showToast('Cart is empty', 'warning');
       return;
     }
 
     const creditAmount = paymentMethod === 'credit' ? Math.max(0, total - paidAmount) : 0;
 
     if (paymentMethod === 'credit' && !selectedCustomer) {
-      alert('Please select a customer for credit sales');
+      showToast('Please select a customer for credit sales', 'warning');
       return;
     }
 
     if (paymentMethod === 'credit' && selectedCustomer) {
-      const newTotalCredit = selectedCustomer.current_credit + creditAmount;
-      if (newTotalCredit > selectedCustomer.credit_limit) {
-        alert(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)} `);
+      const newCredit = selectedCustomer.current_credit + creditAmount;
+      if (newCredit > selectedCustomer.credit_limit) {
+        showToast(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)}`, 'error');
         return;
       }
     }
 
-    if (paymentMethod !== 'credit' && paidAmount < total) {
-      alert('Paid amount is less than total');
+    if (paymentMethod !== 'credit' && paidAmount < total && paymentMethod !== 'mixed') {
+      showToast('Paid amount is less than total', 'warning');
       return;
     }
 
@@ -576,8 +578,8 @@ export function POS() {
       }
 
       logger.error('Sale completion failed', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to complete sale';
-      alert(`Error completing sale: ${errorMessage} `);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      showToast(`Error completing sale: ${errorMessage}`, 'error');
     } finally {
       setProcessing(false);
     }
@@ -905,7 +907,7 @@ export function POS() {
 
             <div className="mt-6 space-y-2">
               <button
-                onClick={completeSale}
+                onClick={handleCompleteSale}
                 disabled={cart.length === 0 || processing}
                 className="w-full py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >

@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Database } from '../lib/database.types';
-import { Plus, Search, Edit, Truck } from 'lucide-react';
+import { Plus, Truck, Edit2, PackageOpen } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { SupplierForm } from './suppliers/SupplierForm';
 import { supplierService } from '../services';
+import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
 
 type Supplier = Database['public']['Tables']['suppliers']['Row'];
 
 export function Suppliers() {
   const { isAdmin } = useAuth();
+  const { showToast } = useToast();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,8 +67,9 @@ export function Suppliers() {
       setShowModal(false);
       resetForm();
       loadSuppliers();
+      showToast(modalMode === 'add' ? 'Supplier added successfully!' : 'Supplier updated successfully!', 'success');
     } catch (error: any) {
-      alert(error.message);
+      showToast(error.message, 'error');
     }
   }
 
@@ -107,11 +111,7 @@ export function Suppliers() {
   );
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
-      </div>
-    );
+    return <LoadingSpinner message="Loading suppliers..." />;
   }
 
   return (
@@ -132,96 +132,93 @@ export function Suppliers() {
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-        <div className="flex items-center gap-2">
-          <Search className="w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search suppliers..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 outline-none text-slate-900"
-          />
-        </div>
-      </div>
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search suppliers by name or contact person..."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredSuppliers.map((supplier) => (
-          <div
-            key={supplier.id}
-            className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-slate-100 p-2 rounded-lg">
-                  <Truck className="w-6 h-6 text-slate-600" />
+      {filteredSuppliers.length === 0 ? (
+        <EmptyState
+          icon={PackageOpen}
+          title="No suppliers found"
+          description={searchTerm ? `No suppliers match "${searchTerm}"` : "You haven't added any suppliers yet."}
+          action={!searchTerm ? { label: 'Add Your First Supplier', onClick: openAddModal } : undefined}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredSuppliers.map((supplier) => (
+            <div
+              key={supplier.id}
+              className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-slate-100 p-2 rounded-lg">
+                    <Truck className="w-6 h-6 text-slate-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900">{supplier.name}</h3>
+                    {supplier.contact_person && (
+                      <p className="text-sm text-slate-500">{supplier.contact_person}</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-slate-900">{supplier.name}</h3>
-                  {supplier.contact_person && (
-                    <p className="text-sm text-slate-500">{supplier.contact_person}</p>
-                  )}
-                </div>
+                {isAdmin && (
+                  <button
+                    onClick={() => openEditModal(supplier)}
+                    className="p-1 hover:bg-slate-100 rounded transition"
+                  >
+                    <Edit2 className="w-4 h-4 text-slate-600" />
+                  </button>
+                )}
               </div>
-              {isAdmin && (
-                <button
-                  onClick={() => openEditModal(supplier)}
-                  className="p-1 hover:bg-slate-100 rounded transition"
-                >
-                  <Edit className="w-4 h-4 text-slate-600" />
-                </button>
-              )}
-            </div>
 
-            <div className="space-y-2 text-sm">
-              {supplier.phone && (
-                <div className="flex items-center gap-2 text-slate-600">
-                  <span className="font-medium">Phone:</span>
-                  <span>{supplier.phone}</span>
-                </div>
-              )}
-              {supplier.email && (
-                <div className="flex items-center gap-2 text-slate-600">
-                  <span className="font-medium">Email:</span>
-                  <span>{supplier.email}</span>
-                </div>
-              )}
-              {supplier.address && (
-                <div className="flex items-start gap-2 text-slate-600">
-                  <span className="font-medium">Address:</span>
-                  <span>{supplier.address}</span>
-                </div>
-              )}
+              <div className="space-y-2 text-sm">
+                {supplier.phone && (
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <span className="font-medium">Phone:</span>
+                    <span>{supplier.phone}</span>
+                  </div>
+                )}
+                {supplier.email && (
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <span className="font-medium">Email:</span>
+                    <span>{supplier.email}</span>
+                  </div>
+                )}
+                {supplier.address && (
+                  <div className="flex items-start gap-2 text-slate-600">
+                    <span className="font-medium">Address:</span>
+                    <span>{supplier.address}</span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">
-                {modalMode === 'add' ? 'Add Supplier' : 'Edit Supplier'}
-              </h3>
-            </div>
-
-            <SupplierForm
-              mode={modalMode}
-              initialData={selectedSupplier ? {
-                name: selectedSupplier.name,
-                contact_person: selectedSupplier.contact_person || '',
-                phone: selectedSupplier.phone || '',
-                email: selectedSupplier.email || '',
-                address: selectedSupplier.address || '',
-                notes: selectedSupplier.notes || '',
-              } : undefined}
-              onSubmit={handleSubmit}
-              onCancel={() => setShowModal(false)}
-            />
-          </div>
+          ))}
         </div>
       )}
+
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={modalMode === 'add' ? 'Add Supplier' : 'Edit Supplier'}
+        size="2xl"
+      >
+        <SupplierForm
+          mode={modalMode}
+          initialData={selectedSupplier ? {
+            name: selectedSupplier.name,
+            contact_person: selectedSupplier.contact_person || '',
+            phone: selectedSupplier.phone || '',
+            email: selectedSupplier.email || '',
+            address: selectedSupplier.address || '',
+            notes: selectedSupplier.notes || '',
+          } : undefined}
+          onSubmit={handleSubmit}
+          onCancel={() => setShowModal(false)}
+        />
+      </Modal>
     </div>
   );
 }
