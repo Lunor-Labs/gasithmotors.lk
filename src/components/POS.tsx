@@ -6,6 +6,9 @@ import {
   List,
   Barcode,
   X,
+  DollarSign,
+  User,
+  CreditCard
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -724,160 +727,182 @@ export function POS() {
 
         {/* Sidebar: Cart & Customer */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sticky top-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Sale Details</h3>
+          <div className="bg-slate-50/50 backdrop-blur-sm rounded-2xl border border-slate-200 p-5 sticky top-6 space-y-5">
+            <h3 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3">Sale Details</h3>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Customer (Optional)</label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedCustomer?.id || ''}
-                    onChange={(e) => {
-                      const customer = customers.find((c) => c.id === e.target.value);
-                      setSelectedCustomer(customer || null);
-                    }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  >
-                    <option value="">Walk-in Customer</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomerModal(true)}
-                    className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
-                    title="Add new customer"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+            <div className="space-y-4">
+              {/* Customer & Agent Group */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Client Info</h4>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Customer (Optional)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedCustomer?.id || ''}
+                      onChange={(e) => {
+                        const customer = customers.find((c) => c.id === e.target.value);
+                        setSelectedCustomer(customer || null);
+                      }}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                    >
+                      <option value="">Walk-in Customer</option>
+                      {customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerModal(true)}
+                      className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
+                      title="Add new customer"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Referral Agent (Optional)
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedReferralAgent?.id || ''}
+                      onChange={(e) => {
+                        const agent = referralAgents.find((a) => a.id === e.target.value);
+                        setSelectedReferralAgent(agent || null);
+                      }}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                    >
+                      <option value="">None</option>
+                      {referralAgents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.commission_rate}%)
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgentModal(true)}
+                      className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
+                      title="Add new referral agent"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Payment & Charges Group */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Payment & Charges</h4>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Payment Method</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm transition appearance-none bg-slate-50"
+                    >
+                      <option value="cash">Cash Payment</option>
+                      <option value="card">Card Payment</option>
+                      <option value="credit">Credit Sale</option>
+                      <option value="mixed">Mixed Payment</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Tax Rate (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={taxRate === 0 ? '' : taxRate}
+                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      max="100"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-slate-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Service Charge</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={serviceCharge === 0 ? '' : serviceCharge}
+                      onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-slate-50"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paidAmount === 0 ? '' : paidAmount}
+                      onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-lg font-bold bg-slate-50"
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Referral Agent (Optional)
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedReferralAgent?.id || ''}
-                    onChange={(e) => {
-                      const agent = referralAgents.find((a) => a.id === e.target.value);
-                      setSelectedReferralAgent(agent || null);
-                    }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  >
-                    <option value="">None</option>
-                    {referralAgents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name} ({agent.commission_rate}%)
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowAgentModal(true)}
-                    className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
-                    title="Add new referral agent"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+              {/* Summary Card */}
+              <div className="bg-slate-900 text-white p-5 rounded-xl shadow-lg space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <DollarSign className="w-16 h-16" />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tax Rate (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={taxRate === 0 ? '' : taxRate}
-                  onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  max="100"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="credit">Credit</option>
-                  <option value="mixed">Mixed</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Service / Support Charge</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={serviceCharge === 0 ? '' : serviceCharge}
-                  onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={paidAmount === 0 ? '' : paidAmount}
-                  onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Subtotal:</span>
-                  <span className="font-medium text-slate-900">LKR {grossSubtotal.toFixed(2)}</span>
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Subtotal:</span>
+                  <span>LKR {grossSubtotal.toFixed(2)}</span>
                 </div>
+
                 {itemLevelDiscount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-orange-600">Item Discounts:</span>
-                    <span className="font-medium text-orange-600">-LKR {itemLevelDiscount.toFixed(2)}</span>
+                  <div className="flex justify-between text-xs text-orange-400">
+                    <span>Discount:</span>
+                    <span>-LKR {itemLevelDiscount.toFixed(2)}</span>
                   </div>
                 )}
-                {taxRate > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Tax ({taxRate}%):</span>
-                    <span className="font-medium text-slate-900">LKR {taxAmount.toFixed(2)}</span>
+
+                {(taxRate > 0 || serviceCharge > 0) && (
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Taxes & Charges:</span>
+                    <span>LKR {(taxAmount + serviceCharge).toFixed(2)}</span>
                   </div>
                 )}
-                {serviceCharge > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Service Charge:</span>
-                    <span className="font-medium text-slate-900">LKR {serviceCharge.toFixed(2)}</span>
+
+                <div className="flex justify-between items-end pt-2 border-t border-slate-800 mt-2">
+                  <span className="text-sm font-medium text-slate-400">Payable Total</span>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-white leading-none">
+                      LKR {total.toFixed(2)}
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
-                  <span className="text-slate-900">Total:</span>
-                  <span className="text-slate-900">LKR {total.toFixed(2)}</span>
                 </div>
               </div>
 
               {changeAmount > 0 && paymentMethod === 'cash' && (
-                <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                  <div className="flex justify-between items-center text-green-700">
-                    <span className="text-sm font-medium">Change:</span>
-                    <span className="text-lg font-bold">LKR {changeAmount.toFixed(2)}</span>
-                  </div>
+                <div className="p-4 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                  <span className="text-xs font-semibold text-green-600 uppercase tracking-wider">Change Due</span>
+                  <span className="text-xl font-bold text-green-700 leading-none">LKR {changeAmount.toFixed(2)}</span>
                 </div>
               )}
             </div>
