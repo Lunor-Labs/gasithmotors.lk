@@ -131,7 +131,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
             </div>
           </div>
 
-          <div className="p-6 print:p-0" id="invoice-content">
+          <div className="p-6 print:p-0" id="print-area">
             <div className="invoice-print">
               <div className="text-center mb-6">
                 <div className="flex justify-center mb-2">
@@ -284,54 +284,62 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
       <style>{`
         @page {
-          margin: 5mm;
-          size: auto;
+          size: 80mm auto;
+          margin: 0;
         }
         @media print {
-          /* Hide everything first */
-          body * {
-            visibility: hidden;
-          }
-          /* Show only the invoice content and its children */
-          #invoice-content, #invoice-content * {
-            visibility: visible;
-          }
-          /* Position the invoice at the very top naturally */
-          #invoice-content {
-            width: 100%;
-            margin: 0;
-            padding: 0;
-            background: white;
-          }
-          /* Reset common print issues */
+          /* Hide everything by default */
           body {
+            visibility: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 80mm !important;
+          }
+          
+          /* Show only the invoice container */
+          #print-area, #print-area * {
+            visibility: visible !important;
+          }
+
+          #print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 80mm !important;
+            margin: 0 !important;
+            padding: 4mm !important;
             background: white !important;
           }
-          .print-hidden {
+
+          /* Hide UI elements specifically */
+          .print-hidden, .no-print, button, .sticky {
             display: none !important;
           }
-          tr { page-break-inside: avoid; }
-          
-          /* Specialized Thermal Printer Adjustments */
-          @media (max-width: 80mm) {
-            #invoice-content {
-              padding: 0;
-            }
-            .invoice-print {
-              width: 100%;
-            }
-            .text-2xl { font-size: 1.1rem !important; }
-            .text-xl { font-size: 1rem !important; }
-            .text-sm { font-size: 0.75rem !important; }
-            .text-xs { font-size: 0.65rem !important; }
-            .w-64 { width: 100% !important; }
-            
-            /* Tighten up spacing for thermal */
-            .mb-6 { margin-bottom: 0.75rem !important; }
-            .pb-6 { padding-bottom: 0.75rem !important; }
-            .pt-6 { padding-top: 0.75rem !important; }
-            .gap-6 { gap: 0.5rem !important; }
+
+          /* Ensure zero margins and continuous flow */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            page-break-inside: auto !important;
           }
+
+          tr, td, th {
+            page-break-inside: avoid !important;
+          }
+
+          /* Reset backgrounds */
+          .bg-slate-50, .bg-slate-100 {
+            background-color: transparent !important;
+          }
+          
+          .border-slate-200 {
+            border-color: #eee !important;
+          }
+
+          /* Thermal Fonts */
+          .text-2xl { font-size: 1.2rem !important; }
+          .text-sm { font-size: 0.8rem !important; }
+          .text-xs { font-size: 0.7rem !important; }
         }
       `}</style>
     </>
