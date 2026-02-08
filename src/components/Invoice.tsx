@@ -184,7 +184,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
               <div className="mb-4">
                 <div className="space-y-3">
                   {invoiceData.items.map((item, index) => (
-                    <div key={index} className="text-sm print:text-xs">
+                    <div key={index} className="invoice-item text-sm print:text-xs">
                       <div className="flex justify-between font-medium text-slate-900 mb-1">
                         <span className="flex-1">{index + 1}. {item.name}</span>
                       </div>
@@ -310,64 +310,85 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
         }
 
         @media print {
-          /* Reset html and body for continuous printing */
+          /* Reset html and body with 0 height to prevent extra pages from background content */
           html, body {
             margin: 0 !important;
             padding: 0 !important;
             width: 80mm !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
+            height: 0 !important; /* Collapse height to hide background pages */
+            min-height: 0 !important;
             background: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            overflow: visible !important; /* Allow invoice to overflow the 0 height body */
+          }
+
+          /* Hide text and set height to 0 for all elements to collapse page */
+          body * {
+            visibility: hidden;
+            height: 0;
+          }
+
+          /* Reset the modal wrapper positioning */
+          .fixed, .absolute, .relative {
+            position: static !important;
+            height: auto !important;
+            width: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
             overflow: visible !important;
           }
 
-          /* Hide everything first */
-          body * {
-            visibility: hidden;
-          }
-
-          /* Show the invoice content and all its children */
+          /* Show invoice content and all children */
           #invoice-content,
           #invoice-content * {
             visibility: visible !important;
+            height: auto; /* Restore height for invoice elements */
           }
 
-          /* Position invoice content for continuous printing */
+          /* Position invoice content */
           #invoice-content {
-            display: block !important;
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 80mm !important;
             margin: 0 !important;
-            padding: 4mm 10mm !important; /* 4mm top/bottom, 10mm left/right - equal side padding */
+            padding: 3mm 5mm 3mm 18mm !important; /* top right bottom left */
             background: white !important;
-            z-index: 9999 !important;
             box-sizing: border-box !important;
+            font-size: 12px !important; /* Base font size for thermal */
           }
 
-          /* Hide UI elements that shouldn't print */
+          /* Explicitly hide the modal backdrop functionality */
+          .fixed.inset-0 {
+             position: absolute !important;
+             top: 0 !important;
+             left: 0 !important;
+             display: block !important;
+             background: transparent !important;
+             z-index: auto !important;
+          }
+
+          /* Hide UI elements */
           .no-print,
-          button,
-          .sticky {
+          .sticky,
+          button {
             display: none !important;
             visibility: hidden !important;
           }
 
-          /* Show invoice wrapper - prevent page breaks */
+          /* Invoice wrapper */
           .invoice-wrapper {
             display: block !important;
             visibility: visible !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            font-size: 12px !important;
           }
 
-          /* Prevent page breaks on all invoice elements */
-          .invoice-wrapper *,
-          #invoice-content * {
+          /* Prevent items from splitting across pages/cuts */
+          .invoice-item {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
+            display: block !important;
           }
 
           /* Optimize fonts for thermal printing */
