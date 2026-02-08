@@ -12,6 +12,8 @@ import { ProductImporter } from './products/ProductImporter';
 import { productService, supplierService } from '../services';
 import { logger } from '../lib/logger';
 import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
+import { playScannerBeep } from '../utils/audio';
+import { useRef } from 'react';
 
 interface ProductsProps {
   initialStockFilter?: StockFilter;
@@ -51,6 +53,70 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
   });
   const [barcodeProduct, setBarcodeProduct] = useState<ProductWithStock | null>(null);
   const [scanningBarcode, setScanningBarcode] = useState(false);
+  const [barcodeBuffer, setBarcodeBuffer] = useState('');
+  const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastKeyTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept scanner if a major modal is open (except our own Add/Edit modal)
+      if (showImportModal || (showModal && modalMode === 'view')) return;
+
+      const currentTime = Date.now();
+      const diff = currentTime - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = currentTime;
+
+      // Scanning logic: Scanners are much faster than manual typing (usually < 50ms)
+      const isFastInput = diff < 50;
+
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.length > 3) {
+          e.preventDefault();
+
+          if (showModal && (modalMode === 'add' || modalMode === 'edit')) {
+            // We are already in a form, just fill the barcode
+            setFormData(prev => ({ ...prev, barcode: barcodeBuffer }));
+            setScanningBarcode(false);
+            playScannerBeep();
+            showToast('Barcode captured!', 'success');
+          } else {
+            // Global scan - decide what to do
+            handleGlobalScan(barcodeBuffer);
+          }
+
+          setBarcodeBuffer('');
+          return;
+        }
+        setBarcodeBuffer('');
+        return;
+      }
+
+      if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+        // High-speed detection OR first character of a potential sequence
+        if (barcodeBuffer === '' || isFastInput || diff < 100) {
+          setBarcodeBuffer((prev) => prev + e.key);
+        } else {
+          // Slow typing - reset buffer to current key unless we are explicitly in "Scan" mode
+          if (!scanningBarcode) {
+            setBarcodeBuffer(e.key);
+          } else {
+            setBarcodeBuffer((prev) => prev + e.key);
+          }
+        }
+
+        if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
+        barcodeTimeoutRef.current = setTimeout(() => {
+          setBarcodeBuffer('');
+        }, 500);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
+    };
+  }, [showModal, modalMode, scanningBarcode, barcodeBuffer, showImportModal]);
 
   // Debounce search term
   useEffect(() => {
@@ -95,10 +161,14 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
     setScanningBarcode(false);
   }
 
-  async function openAddModal() {
+  async function openAddModal(barcode?: string) {
     resetForm();
     setModalMode('add');
     setShowModal(true);
+
+    if (barcode) {
+      setFormData(prev => ({ ...prev, barcode }));
+    }
 
     try {
       const nextSku = await productService.generateNextSku();
@@ -166,6 +236,29 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
       refetch();
     } catch (error: any) {
       showToast(error.message || 'Failed to save product', 'error');
+    }
+  }
+
+  async function handleGlobalScan(barcode: string) {
+    try {
+      const product = await productService.findByBarcode(barcode);
+      if (product) {
+        // Product exists - open view modal
+        const fullProduct = await productService.getProductById(product.id);
+        if (fullProduct) {
+          openViewModal(fullProduct);
+          playScannerBeep();
+          showToast(`Found: ${fullProduct.name}`, 'success');
+        }
+      } else {
+        // New product - open add modal
+        openAddModal(barcode);
+        playScannerBeep();
+        showToast('New product detected!', 'info');
+      }
+    } catch (error) {
+      console.error('Scan error:', error);
+      showToast('Error processing scan', 'error');
     }
   }
 
@@ -246,7 +339,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
           )}
           {isAdmin && (
             <button
-              onClick={openAddModal}
+              onClick={() => openAddModal()}
               className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition shadow-sm"
             >
               <Plus className="w-5 h-5" />

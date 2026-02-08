@@ -105,8 +105,8 @@ export function ProductForm({
               <button
                 type="button"
                 onClick={onStartBarcodeScanning}
-                className={`px-4 py-2 rounded-lg transition ${scanningBarcode
-                  ? 'bg-green-600 text-white'
+                className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${scanningBarcode
+                  ? 'bg-green-600 text-white animate-pulse shadow-[0_0_15px_rgba(22,163,74,0.5)]'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
               >

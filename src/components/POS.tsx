@@ -22,6 +22,7 @@ import { db } from '../lib/db';
 import { SyncStatus } from './pos/SyncStatus';
 import { salesService, customerService, productService } from '../services'; // Import services
 import { logger } from '../lib/logger';
+import { playScannerBeep } from '../utils/audio';
 
 export function POS() {
   const { profile } = useAuth();
@@ -82,6 +83,7 @@ export function POS() {
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [barcodeBuffer, setBarcodeBuffer] = useState('');
   const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastKeyTimeRef = useRef<number>(0);
 
   useEffect(() => {
     loadData();
@@ -150,36 +152,59 @@ export function POS() {
   }, [refetchProducts]);
 
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (showBatchModal || showCustomerModal || showAgentModal || showInvoice) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept scanner if a major modal is open (except POS scan mode)
+      if (showCustomerModal || showAgentModal || showInvoice) return;
 
-      if (e.key === 'Enter' && barcodeBuffer) {
-        searchProductByBarcode(barcodeBuffer);
+      const currentTime = Date.now();
+      const diff = currentTime - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = currentTime;
+
+      // Scanning logic: Scanners are much faster than manual typing (usually < 50ms)
+      const isFastInput = diff < 50;
+
+      // 1. If Enter is pressed, finalize the scan
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.length > 3) {
+          e.preventDefault();
+          searchProductByBarcode(barcodeBuffer);
+          setBarcodeBuffer('');
+          return;
+        }
+        // If it's a short buffer, maybe user just pressed enter, reset
         setBarcodeBuffer('');
         return;
       }
 
-      if (e.key.length === 1) {
-        setBarcodeBuffer((prev) => prev + e.key);
-
-        if (barcodeTimeoutRef.current) {
-          clearTimeout(barcodeTimeoutRef.current);
+      // 2. Capture alphanumeric characters
+      if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+        // High-speed detection OR first character of a potential sequence
+        if (barcodeBuffer === '' || isFastInput || diff < 100) {
+          setBarcodeBuffer((prev) => prev + e.key);
+        } else {
+          // Slow typing detected - reset to current key (human mode)
+          // But if we're in "Barcode Search Type", we might want to capture it anyway
+          if (searchType !== 'barcode') {
+            setBarcodeBuffer(e.key);
+          } else {
+            setBarcodeBuffer((prev) => prev + e.key);
+          }
         }
 
+        // Auto-clear buffer if no key for 500ms
+        if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
         barcodeTimeoutRef.current = setTimeout(() => {
           setBarcodeBuffer('');
-        }, 100);
+        }, 500);
       }
     };
 
-    window.addEventListener('keypress', handleKeyPress);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keypress', handleKeyPress);
-      if (barcodeTimeoutRef.current) {
-        clearTimeout(barcodeTimeoutRef.current);
-      }
+      window.removeEventListener('keydown', handleKeyDown);
+      if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
     };
-  }, [barcodeBuffer, showBatchModal, showCustomerModal, showAgentModal, showInvoice]);
+  }, [barcodeBuffer, showBatchModal, showCustomerModal, showAgentModal, showInvoice, searchType]);
 
   async function loadData() {
     try {
@@ -199,15 +224,18 @@ export function POS() {
   // Hook handles refetching automatically
 
   async function searchProductByBarcode(barcode: string) {
-    // For barcode scan, we might need to search globally if it's not in the current page
-    // So we do a direct DB lookup for exact barcode match
+    if (!barcode) return;
+
     try {
       const productData = await productService.findByBarcode(barcode);
 
       if (!productData) {
-        showToast('Product not found with this barcode', 'error');
+        showToast(`Product not found with barcode: ${barcode}`, 'error');
         return;
       }
+
+      playScannerBeep();
+      showToast(`Scanned: ${productData.name}`, 'success');
 
       // Fetch batches for this product
       const batches = await productService.getProductBatches(productData.id);

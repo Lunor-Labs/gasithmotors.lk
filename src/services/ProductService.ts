@@ -139,11 +139,36 @@ export class ProductService {
                 }
             }
 
+            // Separate batch data from product data
+            const {
+                initial_quantity,
+                cost_price,
+                markup_percentage,
+                selling_price,
+                supplier_id,
+                ...pureProductData
+            } = productData as any;
+
             const product = await this.productRepo.create({
-                ...productData,
+                ...pureProductData,
                 active: true,
                 created_at: new Date().toISOString(),
             });
+
+            // If initial stock is provided, create a batch
+            if (initial_quantity && initial_quantity > 0) {
+                await this.createBatch({
+                    product_id: product.id,
+                    supplier_id: supplier_id || null,
+                    initial_quantity,
+                    current_quantity: initial_quantity,
+                    cost_price: cost_price || 0,
+                    selling_price: selling_price || 0,
+                    received_date: new Date().toISOString().split('T')[0],
+                    batch_number: `B-${Date.now()}`,
+                });
+                logger.info('Initial batch created for new product', { productId: product.id, quantity: initial_quantity });
+            }
 
             logger.info('Product created successfully', {
                 productId: product.id,
@@ -187,8 +212,18 @@ export class ProductService {
                 }
             }
 
+            // Strip batch fields that don't belong in products table
+            const {
+                initial_quantity,
+                cost_price,
+                markup_percentage,
+                selling_price,
+                supplier_id,
+                ...pureUpdates
+            } = updates as any;
+
             const product = await this.productRepo.update(id, {
-                ...updates,
+                ...pureUpdates,
                 updated_at: new Date().toISOString(),
             });
 
