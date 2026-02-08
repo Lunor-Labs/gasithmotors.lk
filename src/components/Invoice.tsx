@@ -103,7 +103,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 no-print">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
           <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between no-print">
             <h2 className="text-xl font-bold text-slate-900">Invoice</h2>
@@ -310,40 +310,43 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
         }
 
         @media print {
-          /* Reset body for thermal printer */
+          /* Hide everything on body first using visibility */
           body {
+            visibility: hidden !important;
             margin: 0 !important;
             padding: 0 !important;
             width: 80mm !important;
             background: white !important;
           }
 
-          /* Hide non-print elements */
-          body > *:not(#invoice-content) {
-            display: none !important;
+          /* Make the invoice content and all its children visible */
+          #invoice-content, 
+          #invoice-content * {
+            visibility: visible !important;
           }
 
-          /* Position invoice content */
+          /* Position invoice content absolutely at top-left of page */
           #invoice-content {
             display: block !important;
-            position: static !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
             width: 80mm !important;
             margin: 0 !important;
             padding: 5mm !important;
             background: white !important;
+            z-index: 9999 !important;
           }
 
-          /* Hide all buttons and modal overlay */
-          .fixed.inset-0,
+          /* Hide UI elements that shouldn't print */
           .no-print,
           button,
-          .sticky,
-          [class*="bg-black"],
-          [class*="bg-opacity"] {
+          .sticky {
             display: none !important;
+            visibility: hidden !important;
           }
 
-          /* Show only the invoice wrapper */
+          /* Show invoice wrapper */
           .invoice-wrapper {
             display: block !important;
           }
