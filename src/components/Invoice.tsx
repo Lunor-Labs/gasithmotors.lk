@@ -92,7 +92,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
     }
 
     if (invoiceData.cashierName) {
-      message += `\nStudy by: ${invoiceData.cashierName}`;
+      message += `\nServed by: ${invoiceData.cashierName}`;
     }
 
     message += `\n\nThank you for your business! 🙏`;
@@ -103,9 +103,9 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 no-print">
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between no-print">
             <h2 className="text-xl font-bold text-slate-900">Invoice</h2>
             <div className="flex items-center gap-2">
               <button
@@ -131,151 +131,171 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
             </div>
           </div>
 
-          <div className="p-6 print:p-0" id="print-area">
-            <div className="invoice-print">
-              <div className="text-center mb-6">
+          <div className="p-6 print:p-0" id="invoice-content">
+            <div className="invoice-wrapper">
+              {/* Header */}
+              <div className="text-center mb-4">
                 <div className="flex justify-center mb-2">
-                  <img src={logo} alt="Gasith Motors" className="h-16 w-16 object-cover rounded-lg" />
+                  <img src={logo} alt="Gasith Motors" className="h-16 w-16 object-cover rounded-lg print:h-12 print:w-12" />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900 mb-1">Gasith Motors</h1>
-                <p className="text-sm text-slate-600">Auto Parts & Accessories</p>
-                <p className="text-xs text-slate-500 mt-1">No: 123, Main Street, Colombo</p>
-                <p className="text-xs text-slate-500">Tel: 011-2345678</p>
+                <h1 className="text-2xl font-bold text-slate-900 mb-1 print:text-lg">Gasith Motors</h1>
+                <p className="text-sm text-slate-600 print:text-xs">Auto Parts & Accessories</p>
+                <p className="text-xs text-slate-500 mt-1 print:text-[10px]">No: 123, Main Street, Colombo</p>
+                <p className="text-xs text-slate-500 print:text-[10px]">Tel: 011-2345678</p>
               </div>
 
-              <div className="flex flex-col gap-y-4 sm:flex-row sm:flex-wrap sm:gap-x-6 mb-6 pb-6 border-b border-slate-200">
-                <div className="min-w-[120px]">
-                  <p className="text-sm font-medium text-slate-500 mb-0.5">Invoice Number</p>
-                  <p className="font-bold text-slate-900">{invoiceData.saleNumber}</p>
+              {/* Divider */}
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Invoice Info */}
+              <div className="space-y-2 mb-4 text-sm print:text-xs">
+                <div className="flex justify-between">
+                  <span className="font-medium text-slate-600">Invoice:</span>
+                  <span className="font-bold text-slate-900">{invoiceData.saleNumber}</span>
                 </div>
-                <div className="min-w-[120px]">
-                  <p className="text-sm font-medium text-slate-500 mb-0.5">Date</p>
-                  <p className="font-bold text-slate-900">{invoiceData.date}</p>
+                <div className="flex justify-between">
+                  <span className="font-medium text-slate-600">Date:</span>
+                  <span className="font-bold text-slate-900">{invoiceData.date}</span>
                 </div>
                 {invoiceData.customerName && (
-                  <div className="min-w-[120px]">
-                    <p className="text-sm font-medium text-slate-500 mb-0.5">Customer</p>
-                    <p className="font-bold text-slate-900">{invoiceData.customerName}</p>
-                    {invoiceData.customerPhone && (
-                      <p className="text-xs text-slate-600">{invoiceData.customerPhone}</p>
-                    )}
+                  <div className="flex justify-between">
+                    <span className="font-medium text-slate-600">Customer:</span>
+                    <span className="font-bold text-slate-900">{invoiceData.customerName}</span>
+                  </div>
+                )}
+                {invoiceData.customerPhone && (
+                  <div className="flex justify-between">
+                    <span className="font-medium text-slate-600">Phone:</span>
+                    <span className="font-bold text-slate-900">{invoiceData.customerPhone}</span>
                   </div>
                 )}
                 {invoiceData.cashierName && (
-                  <div className="min-w-[120px]">
-                    <p className="text-sm font-medium text-slate-500 mb-0.5">Cashier</p>
-                    <p className="font-bold text-slate-900">{invoiceData.cashierName}</p>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-slate-600">Cashier:</span>
+                    <span className="font-bold text-slate-900">{invoiceData.cashierName}</span>
                   </div>
                 )}
               </div>
 
-              <div className="mb-6">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b-2 border-slate-300">
-                      <th className="text-left py-2 text-sm font-bold text-slate-700">#</th>
-                      <th className="text-left py-2 text-sm font-bold text-slate-700">Item</th>
-                      <th className="text-center py-2 text-sm font-bold text-slate-700">Qty</th>
-                      <th className="text-right py-2 text-sm font-bold text-slate-700">Price</th>
-                      <th className="text-right py-2 text-sm font-bold text-slate-700">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoiceData.items.map((item, index) => (
-                      <tr key={index} className="border-b border-slate-200">
-                        <td className="py-3 text-sm text-slate-600">{index + 1}</td>
-                        <td className="py-3">
-                          <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
-                            {item.batchNumber && (
-                              <p className="text-xs text-slate-500">Batch: {item.batchNumber}</p>
-                            )}
-                            {item.warranty && item.warranty.duration > 0 && (
-                              <p className="text-xs font-medium text-blue-600">
-                                Warranty: {item.warranty.duration} {item.warranty.unit} {item.warranty.type ? `(${item.warranty.type})` : ''}
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 text-sm text-slate-600 text-center">{item.quantity}</td>
-                        <td className="py-3 text-sm text-slate-600 text-right">
-                          LKR {item.unitPrice.toFixed(2)}
-                        </td>
-                        <td className="py-3 text-sm font-medium text-slate-900 text-right">
-                          LKR {item.subtotal.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {/* Divider */}
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
 
-              <div className="flex justify-end mb-6">
-                <div className="w-64 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">Subtotal:</span>
-                    <span className="font-medium text-slate-900">
-                      LKR {invoiceData.subtotal.toFixed(2)}
-                    </span>
-                  </div>
-                  {invoiceData.discount > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">Discount:</span>
-                      <span className="font-medium text-slate-900">
-                        -LKR {invoiceData.discount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  {invoiceData.tax > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">Tax:</span>
-                      <span className="font-medium text-slate-900">
-                        LKR {invoiceData.tax.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  {invoiceData.serviceCharge !== undefined && invoiceData.serviceCharge > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">Service Charge:</span>
-                      <span className="font-medium text-slate-900">
-                        LKR {invoiceData.serviceCharge.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-lg font-bold border-t-2 border-slate-300 pt-2">
-                    <span className="text-slate-900">TOTAL:</span>
-                    <span className="text-slate-900">LKR {invoiceData.total.toFixed(2)}</span>
-                  </div>
-                  {invoiceData.paymentMethod !== 'credit' && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-600">Paid:</span>
-                        <span className="font-medium text-slate-900">
-                          LKR {invoiceData.paidAmount.toFixed(2)}
-                        </span>
+              {/* Items */}
+              <div className="mb-4">
+                <div className="space-y-3">
+                  {invoiceData.items.map((item, index) => (
+                    <div key={index} className="text-sm print:text-xs">
+                      <div className="flex justify-between font-medium text-slate-900 mb-1">
+                        <span className="flex-1">{index + 1}. {item.name}</span>
                       </div>
-                      {invoiceData.changeAmount > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-600">Change:</span>
-                          <span className="font-medium text-green-600">
-                            LKR {invoiceData.changeAmount.toFixed(2)}
-                          </span>
+                      {item.batchNumber && (
+                        <div className="text-xs text-slate-500 pl-4 print:text-[10px]">
+                          Batch: {item.batchNumber}
                         </div>
                       )}
-                    </>
-                  )}
-                  <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
-                    <span className="text-slate-600">Payment Method:</span>
-                    <span className="font-medium text-slate-900 uppercase">
-                      {invoiceData.paymentMethod}
-                    </span>
-                  </div>
+                      {item.warranty && item.warranty.duration > 0 && (
+                        <div className="text-xs font-medium text-blue-600 pl-4 print:text-[10px]">
+                          Warranty: {item.warranty.duration} {item.warranty.unit}
+                          {item.warranty.type ? ` (${item.warranty.type})` : ''}
+                        </div>
+                      )}
+                      <div className="flex justify-between text-slate-600 mt-1">
+                        <span className="pl-4">
+                          {item.quantity} x LKR {item.unitPrice.toFixed(2)}
+                        </span>
+                        <span className="font-medium text-slate-900">
+                          LKR {item.subtotal.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="text-center pt-6 border-t border-slate-200">
-                <p className="text-sm text-slate-600">Thank you for your business!</p>
-                <p className="text-xs text-slate-500 mt-1">This is a computer generated invoice</p>
+              {/* Divider */}
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Summary */}
+              <div className="space-y-2 text-sm print:text-xs mb-4">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Subtotal:</span>
+                  <span className="font-medium text-slate-900">
+                    LKR {invoiceData.subtotal.toFixed(2)}
+                  </span>
+                </div>
+                {invoiceData.discount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Discount:</span>
+                    <span className="font-medium text-slate-900">
+                      -LKR {invoiceData.discount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {invoiceData.tax > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Tax:</span>
+                    <span className="font-medium text-slate-900">
+                      LKR {invoiceData.tax.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {invoiceData.serviceCharge !== undefined && invoiceData.serviceCharge > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Service Charge:</span>
+                    <span className="font-medium text-slate-900">
+                      LKR {invoiceData.serviceCharge.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="border-t-2 border-slate-900 my-3"></div>
+
+              {/* Total */}
+              <div className="flex justify-between text-lg font-bold mb-4 print:text-base">
+                <span className="text-slate-900">TOTAL:</span>
+                <span className="text-slate-900">LKR {invoiceData.total.toFixed(2)}</span>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Payment Info */}
+              <div className="space-y-2 text-sm print:text-xs mb-4">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Payment Method:</span>
+                  <span className="font-medium text-slate-900 uppercase">
+                    {invoiceData.paymentMethod}
+                  </span>
+                </div>
+                {invoiceData.paymentMethod !== 'credit' && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Paid:</span>
+                      <span className="font-medium text-slate-900">
+                        LKR {invoiceData.paidAmount.toFixed(2)}
+                      </span>
+                    </div>
+                    {invoiceData.changeAmount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Change:</span>
+                        <span className="font-medium text-green-600">
+                          LKR {invoiceData.changeAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Footer */}
+              <div className="text-center pt-2">
+                <p className="text-sm text-slate-600 print:text-xs">Thank you for your business!</p>
+                <p className="text-xs text-slate-500 mt-1 print:text-[10px]">This is a computer generated invoice</p>
               </div>
             </div>
           </div>
@@ -283,63 +303,147 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
       </div>
 
       <style>{`
+        /* Print Styles for 80mm Thermal Printer */
         @page {
           size: 80mm auto;
           margin: 0;
         }
+
         @media print {
-          /* Hide everything by default */
+          /* Reset body for thermal printer */
           body {
-            visibility: hidden !important;
             margin: 0 !important;
             padding: 0 !important;
             width: 80mm !important;
-          }
-          
-          /* Show only the invoice container */
-          #print-area, #print-area * {
-            visibility: visible !important;
-          }
-
-          #print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 80mm !important;
-            margin: 0 !important;
-            padding: 4mm !important;
             background: white !important;
           }
 
-          /* Hide UI elements specifically */
-          .print-hidden, .no-print, button, .sticky {
+          /* Hide non-print elements */
+          body > *:not(#invoice-content) {
             display: none !important;
           }
 
-          /* Ensure zero margins and continuous flow */
+          /* Position invoice content */
+          #invoice-content {
+            display: block !important;
+            position: static !important;
+            width: 80mm !important;
+            margin: 0 !important;
+            padding: 5mm !important;
+            background: white !important;
+          }
+
+          /* Hide all buttons and modal overlay */
+          .fixed.inset-0,
+          .no-print,
+          button,
+          .sticky,
+          [class*="bg-black"],
+          [class*="bg-opacity"] {
+            display: none !important;
+          }
+
+          /* Show only the invoice wrapper */
+          .invoice-wrapper {
+            display: block !important;
+          }
+
+          /* Optimize fonts for thermal printing */
+          .print\\:text-lg {
+            font-size: 1.1rem !important;
+            font-weight: 700 !important;
+          }
+
+          .print\\:text-base {
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+          }
+
+          .print\\:text-xs {
+            font-size: 0.75rem !important;
+          }
+
+          .print\\:text-\\[10px\\] {
+            font-size: 10px !important;
+          }
+
+          /* Image optimization */
+          .print\\:h-12 {
+            height: 3rem !important;
+          }
+
+          .print\\:w-12 {
+            width: 3rem !important;
+          }
+
+          img {
+            max-width: 100% !important;
+            height: auto !important;
+          }
+
+          /* Ensure borders print */
+          .border-slate-300,
+          .border-slate-900 {
+            border-color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* Ensure text prints clearly */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            page-break-inside: auto !important;
           }
 
-          tr, td, th {
-            page-break-inside: avoid !important;
-          }
-
-          /* Reset backgrounds */
-          .bg-slate-50, .bg-slate-100 {
+          /* Remove any background colors */
+          .bg-slate-50,
+          .bg-slate-100 {
             background-color: transparent !important;
           }
-          
-          .border-slate-200 {
-            border-color: #eee !important;
+
+          /* Ensure proper text wrapping */
+          * {
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
           }
 
-          /* Thermal Fonts */
-          .text-2xl { font-size: 1.2rem !important; }
-          .text-sm { font-size: 0.8rem !important; }
-          .text-xs { font-size: 0.7rem !important; }
+          /* Remove shadows and rounded corners for print */
+          .rounded-xl,
+          .rounded-lg,
+          .shadow-xl {
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+
+          /* Compact spacing for thermal */
+          .mb-4 {
+            margin-bottom: 0.5rem !important;
+          }
+
+          .mb-3 {
+            margin-bottom: 0.4rem !important;
+          }
+
+          .my-3 {
+            margin-top: 0.4rem !important;
+            margin-bottom: 0.4rem !important;
+          }
+
+          .space-y-2 > * + * {
+            margin-top: 0.35rem !important;
+          }
+
+          .space-y-3 > * + * {
+            margin-top: 0.5rem !important;
+          }
+        }
+
+        /* Screen view styles */
+        @media screen {
+          .invoice-wrapper {
+            max-width: 80mm;
+            margin: 0 auto;
+          }
         }
       `}</style>
     </>
