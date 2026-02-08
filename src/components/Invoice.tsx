@@ -186,10 +186,10 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                   {invoiceData.items.map((item, index) => (
                     <div key={index} className="invoice-item text-sm print:text-xs">
                       <div className="flex justify-between font-medium text-slate-900 mb-1">
-                        <span className="flex-1">{index + 1}. {item.name}</span>
+                        <span className="flex-1 truncate-print">{index + 1}. {item.name}</span>
                       </div>
                       {item.batchNumber && (
-                        <div className="text-xs text-slate-500 pl-4 print:text-[10px]">
+                        <div className="text-xs text-slate-500 pl-4 print:hidden">
                           Batch: {item.batchNumber}
                         </div>
                       )}
@@ -382,6 +382,20 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
             display: block !important;
             visibility: visible !important;
             font-size: 12px !important;
+          }
+
+          /* Truncate long names in print to save space */
+          .truncate-print {
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            max-width: 45mm !important;
+            display: inline-block !important;
+          }
+
+          /* Explicitly hide batch and other info if needed */
+          .print-hide {
+            display: none !important;
           }
 
           /* Prevent items from splitting across pages/cuts */
