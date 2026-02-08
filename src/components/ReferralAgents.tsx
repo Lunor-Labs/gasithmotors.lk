@@ -52,6 +52,13 @@ export function ReferralAgents() {
   const [showConfirmPayoutModal, setShowConfirmPayoutModal] = useState(false);
   const [commissionsToPayout, setCommissionsToPayout] = useState<Commission[]>([]);
 
+  // Custom Commission State
+  const [showCustomCommissionModal, setShowCustomCommissionModal] = useState(false);
+  const [saleSearchQuery, setSaleSearchQuery] = useState('');
+  const [foundSale, setFoundSale] = useState<any>(null);
+  const [customCommissionAmount, setCustomCommissionAmount] = useState<number>(0);
+  const [searchingSale, setSearchingSale] = useState(false);
+
   useEffect(() => {
     loadAgents();
   }, []);
@@ -141,6 +148,50 @@ export function ReferralAgents() {
       loadAgents();
     } catch (error: any) {
       showToast(error.message || 'Failed to save agent', 'error');
+    }
+  }
+
+  async function handleSearchSale() {
+    if (!saleSearchQuery.trim()) return;
+    setSearchingSale(true);
+    try {
+      const sale = await salesService.findSaleByNumber(saleSearchQuery.trim());
+      if (sale) {
+        setFoundSale(sale);
+        // Default commission hint (e.g., 5% of sale)
+        if (selectedAgent) {
+          const hint = (sale.total_amount - (sale.service_charge || 0)) * (selectedAgent.commission_rate / 100);
+          setCustomCommissionAmount(Math.round(hint));
+        }
+      } else {
+        showToast('Sale not found', 'error');
+        setFoundSale(null);
+      }
+    } catch (error) {
+      showToast('Error searching sale', 'error');
+    } finally {
+      setSearchingSale(false);
+    }
+  }
+
+  async function handleAddCustomCommission() {
+    if (!selectedAgent || !foundSale || customCommissionAmount <= 0) return;
+
+    try {
+      await salesService.addCustomCommission({
+        referral_agent_id: selectedAgent.id,
+        sale_id: foundSale.id,
+        commission_amount: customCommissionAmount,
+        sale_amount: foundSale.total_amount - (foundSale.service_charge || 0),
+      });
+
+      showToast('Custom commission added!', 'success');
+      setShowCustomCommissionModal(false);
+      setFoundSale(null);
+      setSaleSearchQuery('');
+      loadCommissions(selectedAgent.id);
+    } catch (error: any) {
+      showToast(error.message || 'Failed to add commission', 'error');
     }
   }
 
@@ -428,13 +479,22 @@ export function ReferralAgents() {
                       <div className="space-y-4">
                         <div className="flex justify-between items-center mb-4">
                           <h4 className="font-semibold text-slate-900">Total Pending: LKR {commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + c.commission_amount, 0).toFixed(2)}</h4>
-                          <button
-                            onClick={() => handlePayout(commissions.filter(c => c.status === 'pending'))}
-                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-sm"
-                          >
-                            <DollarSign className="w-4 h-4" />
-                            Payout All Pending
-                          </button>
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            <button
+                              onClick={() => handlePayout(commissions.filter(c => c.status === 'pending'))}
+                              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-sm"
+                            >
+                              <DollarSign className="w-4 h-4" />
+                              Payout All Pending
+                            </button>
+                            <button
+                              onClick={() => setShowCustomCommissionModal(true)}
+                              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition font-medium border border-slate-200"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Add Custom Commission
+                            </button>
+                          </div>
                         </div>
                         <div className="border border-slate-200 rounded-lg overflow-hidden">
                           <table className="w-full">
@@ -520,7 +580,7 @@ export function ReferralAgents() {
             <DollarSign className="w-8 h-8 text-green-600" />
           </div>
           <h3 className="text-xl font-bold text-slate-900 mb-2">Confirm Commission Payout</h3>
-          <p className="text-slate-600 mb-6">
+          <p className="text-slate-600 mb-6 font-normal">
             Are you sure you want to payout{' '}
             <span className="font-bold text-slate-900">
               LKR {commissionsToPayout.reduce((sum: number, c: Commission) => sum + c.commission_amount, 0).toFixed(2)}
@@ -542,6 +602,90 @@ export function ReferralAgents() {
               Confirm Payout
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Add Custom Commission Modal */}
+      <Modal
+        isOpen={showCustomCommissionModal}
+        onClose={() => {
+          setShowCustomCommissionModal(false);
+          setFoundSale(null);
+          setSaleSearchQuery('');
+        }}
+        title="Add Custom Commission"
+        size="lg"
+      >
+        <div className="p-6 text-left">
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Find Sale by Number
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={saleSearchQuery}
+                onChange={(e) => setSaleSearchQuery(e.target.value.toUpperCase())}
+                placeholder="e.g. SALE-2026..."
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none"
+              />
+              <button
+                onClick={handleSearchSale}
+                disabled={searchingSale}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 transition"
+              >
+                {searchingSale ? 'Searching...' : 'Find'}
+              </button>
+            </div>
+          </div>
+
+          {foundSale && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-500 block">Sale Total</span>
+                    <span className="font-bold text-slate-900">LKR {foundSale.total_amount.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Date</span>
+                    <span className="font-bold text-slate-900">{new Date(foundSale.sale_date).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Commission Amount (LKR)
+                </label>
+                <input
+                  type="number"
+                  value={customCommissionAmount}
+                  onChange={(e) => setCustomCommissionAmount(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none font-bold text-lg"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowCustomCommissionModal(false);
+                    setFoundSale(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddCustomCommission}
+                  className="flex-1 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium"
+                >
+                  Add Commission
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

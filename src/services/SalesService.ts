@@ -614,4 +614,34 @@ export class SalesService {
 
         return `SALE-${year}${month}${day}-${timestamp}`;
     }
+
+    /**
+     * Add a custom commission for a sale
+     */
+    async addCustomCommission(data: {
+        referral_agent_id: string;
+        sale_id: string;
+        commission_amount: number;
+        sale_amount: number;
+    }) {
+        try {
+            logger.info('Adding custom commission', data);
+
+            // Calculate a temporary rate for display/reference
+            const commissionRate = (data.commission_amount / data.sale_amount) * 100;
+
+            await this.saleRepo.createCommission({
+                referral_agent_id: data.referral_agent_id,
+                sale_id: data.sale_id,
+                commission_amount: data.commission_amount,
+                commission_rate: Math.round(commissionRate * 100) / 100,
+                sale_amount: data.sale_amount,
+            });
+
+            logger.info('Custom commission added successfully');
+        } catch (error) {
+            logger.error('Failed to add custom commission', error as Error);
+            throw error;
+        }
+    }
 }
