@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { PRODUCT_UNITS } from '../../utils/constants';
 import { SupplierForm } from '../suppliers/SupplierForm';
@@ -73,6 +73,15 @@ export function ProductForm({
     }
   };
 
+  const handleGenerateBarcode = () => {
+    // Generate a unique numeric barcode (12 digits)
+    const timestamp = Date.now().toString().slice(-8);
+    const random = Math.floor(Math.random() * 9000 + 1000).toString();
+    const newBarcode = timestamp + random;
+    onChange({ ...formData, barcode: newBarcode });
+    showToast('Unique barcode generated!', 'success');
+  };
+
   return (
     <>
       <form onSubmit={onSubmit} className="p-6">
@@ -102,16 +111,28 @@ export function ProductForm({
                 className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
                 placeholder={scanningBarcode ? 'Scan barcode...' : ''}
               />
-              <button
-                type="button"
-                onClick={onStartBarcodeScanning}
-                className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${scanningBarcode
-                  ? 'bg-green-600 text-white animate-pulse shadow-[0_0_15px_rgba(22,163,74,0.5)]'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-              >
-                {scanningBarcode ? 'Scanning...' : 'Scan'}
-              </button>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={onStartBarcodeScanning}
+                  className={`px-3 py-2 rounded-lg transition flex items-center gap-2 ${scanningBarcode
+                    ? 'bg-green-600 text-white animate-pulse shadow-[0_0_15px_rgba(22,163,74,0.5)]'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  title="Scan with camera/scanner"
+                >
+                  {scanningBarcode ? 'Scanning...' : 'Scan'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateBarcode}
+                  className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition flex items-center gap-2"
+                  title="Generate unique barcode"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Gen
+                </button>
+              </div>
             </div>
           </div>
 

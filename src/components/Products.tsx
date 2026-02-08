@@ -490,7 +490,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
       {/* Barcode Printing Modal */}
       {barcodeProduct && (
         <BarcodeGenerator
-          barcode={barcodeProduct.barcode || ''}
+          barcode={barcodeProduct.barcode || barcodeProduct.sku}
           productName={barcodeProduct.name}
           sku={barcodeProduct.sku}
           price={barcodeProduct.batches[0]?.selling_price}
