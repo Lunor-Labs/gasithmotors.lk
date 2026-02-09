@@ -227,6 +227,7 @@ export function POS() {
     if (!barcode) return;
 
     try {
+      setSearchTerm(''); // Clear search bar on scan
       const productData = await productService.findByBarcode(barcode);
 
       if (!productData) {
