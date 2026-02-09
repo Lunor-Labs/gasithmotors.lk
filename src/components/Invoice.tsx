@@ -46,7 +46,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
     message += `📅 Date: ${invoiceData.date}\n\n`;
 
     message += `🏢 *Gasith Motors*\n`;
-    message += `📞 011-2345678\n\n`;
+    message += `📞 +94 77 6600 285/+94 47 2103 738\n\n`;
 
     if (invoiceData.customerName) {
       message += `👤 Customer: ${invoiceData.customerName}\n`;
@@ -140,8 +140,8 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                 </div>
                 <h1 className="text-2xl font-bold text-slate-900 mb-1 print:text-lg">Gasith Motors</h1>
                 <p className="text-sm text-slate-600 print:text-xs">Auto Parts & Accessories</p>
-                <p className="text-xs text-slate-500 mt-1 print:text-[10px]">No: 123, Main Street, Colombo</p>
-                <p className="text-xs text-slate-500 print:text-[10px]">Tel: 011-2345678</p>
+                <p className="text-xs text-slate-500 mt-1 print:text-[10px]">No: 80, Beliatta Rd, Walasmulla</p>
+                <p className="text-xs text-slate-500 print:text-[10px]">Tel: +94 77 6600 285/+94 47 2103 738</p>
               </div>
 
               {/* Divider */}
@@ -158,19 +158,19 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                   <span className="font-bold text-slate-900">{invoiceData.date}</span>
                 </div>
                 {invoiceData.customerName && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between print:hidden">
                     <span className="font-medium text-slate-600">Customer:</span>
                     <span className="font-bold text-slate-900">{invoiceData.customerName}</span>
                   </div>
                 )}
                 {invoiceData.customerPhone && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between print:hidden">
                     <span className="font-medium text-slate-600">Phone:</span>
                     <span className="font-bold text-slate-900">{invoiceData.customerPhone}</span>
                   </div>
                 )}
                 {invoiceData.cashierName && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between print:hidden">
                     <span className="font-medium text-slate-600">Cashier:</span>
                     <span className="font-bold text-slate-900">{invoiceData.cashierName}</span>
                   </div>
