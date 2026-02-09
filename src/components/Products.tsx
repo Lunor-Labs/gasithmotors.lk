@@ -235,7 +235,18 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
       resetForm();
       refetch();
     } catch (error: any) {
-      showToast(error.message || 'Failed to save product', 'error');
+      let message = error.message || 'Failed to save product';
+
+      // Handle unique constraint errors from database or service
+      if (message.toLowerCase().includes('unique constraint') || message.toLowerCase().includes('already exists') || message.toLowerCase().includes('already in use')) {
+        if (message.toLowerCase().includes('barcode')) {
+          message = 'This barcode is already assigned to another product.';
+        } else if (message.toLowerCase().includes('sku')) {
+          message = 'This SKU is already in use by another product.';
+        }
+      }
+
+      showToast(message, 'error');
     }
   }
 

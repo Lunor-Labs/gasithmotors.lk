@@ -123,19 +123,25 @@ export class ProductService {
             // Validate required fields
             this.validateProductData(productData);
 
+            // Process and validate unique fields
+            const sku = productData.sku?.trim() || null;
+            const barcode = productData.barcode?.trim() || null;
+
             // Check for duplicate SKU
-            if (productData.sku) {
-                const existing = await this.productRepo.findBySku(productData.sku);
+            if (sku) {
+                const existing = await this.productRepo.findBySku(sku);
                 if (existing) {
-                    throw new Error(`Product with SKU "${productData.sku}" already exists.`);
+                    throw new Error(`Product with SKU "${sku}" already exists.`);
                 }
+            } else {
+                throw new Error('SKU is required.');
             }
 
             // Check for duplicate barcode
-            if (productData.barcode) {
-                const existing = await this.productRepo.findByBarcode(productData.barcode);
+            if (barcode) {
+                const existing = await this.productRepo.findByBarcode(barcode);
                 if (existing) {
-                    throw new Error(`Product with barcode "${productData.barcode}" already exists.`);
+                    throw new Error(`Product with barcode "${barcode}" already exists.`);
                 }
             }
 
@@ -151,6 +157,8 @@ export class ProductService {
 
             const product = await this.productRepo.create({
                 ...pureProductData,
+                sku,
+                barcode,
                 active: true,
                 created_at: new Date().toISOString(),
             });
@@ -196,19 +204,28 @@ export class ProductService {
                 throw new Error('Product not found.');
             }
 
+            // Process and validate unique fields if they are being updated
+            const sku = updates.sku !== undefined ? (updates.sku?.trim() || null) : undefined;
+            const barcode = updates.barcode !== undefined ? (updates.barcode?.trim() || null) : undefined;
+
             // Validate SKU uniqueness if changing
-            if (updates.sku && updates.sku !== existing.sku) {
-                const duplicate = await this.productRepo.findBySku(updates.sku);
+            if (sku !== undefined && sku !== existing.sku) {
+                if (sku === null) {
+                    throw new Error('SKU cannot be empty.');
+                }
+                const duplicate = await this.productRepo.findBySku(sku);
                 if (duplicate && duplicate.id !== id) {
-                    throw new Error(`SKU "${updates.sku}" is already in use.`);
+                    throw new Error(`SKU "${sku}" is already in use.`);
                 }
             }
 
             // Validate barcode uniqueness if changing
-            if (updates.barcode && updates.barcode !== existing.barcode) {
-                const duplicate = await this.productRepo.findByBarcode(updates.barcode);
-                if (duplicate && duplicate.id !== id) {
-                    throw new Error(`Barcode "${updates.barcode}" is already in use.`);
+            if (barcode !== undefined && barcode !== existing.barcode) {
+                if (barcode !== null) {
+                    const duplicate = await this.productRepo.findByBarcode(barcode);
+                    if (duplicate && duplicate.id !== id) {
+                        throw new Error(`Barcode "${barcode}" is already in use.`);
+                    }
                 }
             }
 
@@ -222,10 +239,14 @@ export class ProductService {
                 ...pureUpdates
             } = updates as any;
 
-            const product = await this.productRepo.update(id, {
+            const productObject: any = {
                 ...pureUpdates,
                 updated_at: new Date().toISOString(),
-            });
+            };
+            if (sku !== undefined) productObject.sku = sku;
+            if (barcode !== undefined) productObject.barcode = barcode;
+
+            const product = await this.productRepo.update(id, productObject);
 
             logger.info('Product updated successfully', { productId: id });
 
