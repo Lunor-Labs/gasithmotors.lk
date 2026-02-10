@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { productService } from '../services';
 import { logger } from '../lib/logger';
+import { expandSearchTerm } from '../utils/searchUtils';
 
 export type SearchType = 'all' | 'name' | 'sku' | 'barcode';
 export type StockFilter = 'all' | 'low_stock' | 'out_of_stock';
@@ -85,6 +86,8 @@ export function useProducts(
       // Apply search filters
       if (searchQuery.trim()) {
         const query = searchQuery.trim().toLowerCase();
+        // Expand search term to include synonyms
+        const expandedTerms = expandSearchTerm(query);
 
         switch (searchType) {
           case 'sku':
@@ -95,33 +98,36 @@ export function useProducts(
             break;
           case 'name':
             collection = db.products.filter(p => {
-              const words = query.split(/\s+/);
-              // Original multi-word AND search
-              const multiWordMatch = words.every(word => p.name.toLowerCase().includes(word));
-              if (multiWordMatch) return true;
+              // Check if ANY of the expanded terms match the product name
+              return expandedTerms.some(term => {
+                // Multi-word check for each expanded term
+                const words = term.split(/\s+/);
+                const match = words.every(word => p.name.toLowerCase().includes(word));
+                if (match) return true;
 
-              // Fallback: Space-insensitive normalization check
-              const normalizedName = p.name.toLowerCase().replace(/\s+/g, '');
-              const normalizedQuery = query.replace(/\s+/g, '');
-              return normalizedName.includes(normalizedQuery);
+                // Fallback: Space-insensitive check
+                const normalizedName = p.name.toLowerCase().replace(/\s+/g, '');
+                const normalizedTerm = term.replace(/\s+/g, '');
+                return normalizedName.includes(normalizedTerm);
+              });
             });
             break;
           case 'all':
           default:
-            if (query.includes(' ')) {
-              collection = db.products.filter(p => {
-                const words = query.split(/\s+/);
+            collection = db.products.filter(p => {
+              // Check synonyms against name
+              const nameMatch = expandedTerms.some(term => {
+                const words = term.split(/\s+/);
                 return words.every(word => p.name.toLowerCase().includes(word));
               });
-            } else {
-              collection = db.products.filter(p =>
-                p.name.toLowerCase().includes(query) ||
-                p.sku.toLowerCase() === query ||
+
+              if (nameMatch) return true;
+
+              return p.sku.toLowerCase() === query ||
                 (typeof p.barcode === 'string' && p.barcode.includes(query)) ||
-                // Fallback: Space-insensitive normalization check for single word
-                p.name.toLowerCase().replace(/\s+/g, '').includes(query.replace(/\s+/g, ''))
-              );
-            }
+                // Fallback: Space-insensitive normalization check
+                p.name.toLowerCase().replace(/\s+/g, '').includes(query.replace(/\s+/g, ''));
+            });
             break;
         }
       }

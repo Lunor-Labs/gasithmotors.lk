@@ -1,6 +1,7 @@
 import { BaseRepository } from './base/BaseRepository';
 import { DatabaseAdapter } from './base/DatabaseAdapter';
 import { Product, ProductBatch, ProductWithStock } from '../types';
+import { expandSearchTerm, generateOrQuery } from '../utils/searchUtils';
 
 /**
  * Repository for Product-related database operations
@@ -134,12 +135,28 @@ export class ProductRepository extends BaseRepository<Product> {
      * Search products by name
      */
     async searchByName(searchTerm: string): Promise<Product[]> {
-        return this.query({
-            where: [
-                { field: 'name', operator: 'like', value: searchTerm },
-                { field: 'active', operator: '=', value: true },
-            ],
-        });
+        // Use the raw client to perform an OR query with synonyms
+        // This is necessary because the base repository query helper doesn't support complex OR conditions easily
+        const client = (this.adapter as any).getClient();
+
+
+
+        const terms = expandSearchTerm(searchTerm);
+        const orQuery = generateOrQuery('name', terms);
+
+        if (!orQuery) return [];
+
+        const { data, error } = await client
+            .from(this.tableName)
+            .select('*')
+            .eq('active', true)
+            .or(orQuery);
+
+        if (error) {
+            throw new Error(`Search failed: ${error.message}`);
+        }
+
+        return data as Product[];
     }
 
     /**
