@@ -277,36 +277,85 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
     try {
       const allProducts = await productService.getAllProducts();
 
-      const csvData = allProducts.map(p => ({
-        SKU: p.sku,
-        Barcode: p.barcode || '',
-        Name: p.name,
-        Category: p.category || '',
-        Unit: p.unit || 'piece',
-        'Reorder Level': p.reorder_level || 0,
-        'Stock Level': (p as any).total_stock || 0,
-        Description: p.description || '',
-      }));
+      // Flatten products to rows (one row per batch)
+      const csvRows: any[] = [];
 
-      const csv = '\uFEFF' + [
-        Object.keys(csvData[0]).join(','),
-        ...csvData.map(row =>
-          Object.values(row).map(val =>
-            typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val
-          ).join(',')
+      for (const product of allProducts) {
+        if (product.batches && product.batches.length > 0) {
+          // Create a row for each batch
+          // Sort batches by received date (newest first)
+          const sortedBatches = [...product.batches].sort((a, b) =>
+            new Date(b.received_date).getTime() - new Date(a.received_date).getTime()
+          );
+
+          for (const batch of sortedBatches) {
+            csvRows.push({
+              product_name: product.name,
+              sku: product.sku,
+              barcode: product.barcode || '',
+              category: product.category || '',
+              supplier_name: batch.supplier?.name || '',
+              cost_price: batch.cost_price || 0,
+              markup_percentage: batch.markup_percentage || 0,
+              quantity: batch.current_quantity || 0,
+              batch_number: batch.batch_number || '',
+              expiry_date: batch.expiry_date || '',
+              reorder_level: product.reorder_level || 0,
+              unit: product.unit || 'piece',
+              image_url: product.image_url || '',
+            });
+          }
+        } else {
+          // Product has no stock/batches - export as single row with empty batch fields
+          csvRows.push({
+            product_name: product.name,
+            sku: product.sku,
+            barcode: product.barcode || '',
+            category: product.category || '',
+            supplier_name: '',
+            cost_price: 0,
+            markup_percentage: 0,
+            quantity: 0,
+            batch_number: '',
+            expiry_date: '',
+            reorder_level: product.reorder_level || 0,
+            unit: product.unit || 'piece',
+            image_url: product.image_url || '',
+          });
+        }
+      }
+
+      if (csvRows.length === 0) {
+        showToast('No data to export', 'info');
+        return;
+      }
+
+      // Create CSV content
+      const headers = Object.keys(csvRows[0]);
+      const csvContent = '\uFEFF' + [
+        headers.join(','),
+        ...csvRows.map(row =>
+          headers.map(header => {
+            const val = row[header];
+            // Escape quotes and wrap string values in quotes
+            if (typeof val === 'string') {
+              return `"${val.replace(/"/g, '""')}"`;
+            }
+            return val;
+          }).join(',')
         )
       ].join('\n');
 
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `products_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `inventory_export_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      showToast('Products exported successfully!', 'success');
+      showToast(`Exported ${csvRows.length} rows successfully!`, 'success');
     } catch (error) {
       logger.error('Failed to export products', error as Error);
       showToast('Failed to export products. Please try again.', 'error');
