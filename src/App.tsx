@@ -44,7 +44,10 @@ function AppContent() {
   return (
     <Layout currentView={currentView} onNavigate={(view) => handleNavigate(view)}>
       {currentView === 'dashboard' && (
-        <Dashboard onFilterNavigate={(filter) => handleNavigate('products', filter)} />
+        <Dashboard
+          onNavigate={(view) => handleNavigate(view)}
+          onFilterNavigate={(filter) => handleNavigate('products', filter)}
+        />
       )}
       {currentView === 'pos' && <POS />}
       {currentView === 'products' && (
