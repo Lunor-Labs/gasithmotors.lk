@@ -14,6 +14,7 @@ export interface CreateSaleInput {
         batch_id: string;
         quantity: number;
         unit_price: number;
+        selling_price: number;
         cost_price: number;
         warranty_duration?: number;
         warranty_unit?: 'days' | 'months' | 'years';
@@ -95,6 +96,7 @@ export class SalesService {
                 batch_id: item.batch_id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
+                selling_price: item.selling_price,
                 cost_price: item.cost_price,
                 subtotal: item.quantity * item.unit_price,
                 warranty_duration: item.warranty_duration || 0,

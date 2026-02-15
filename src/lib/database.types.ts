@@ -390,6 +390,7 @@ export interface Database {
           batch_id: string
           quantity: number
           unit_price: number
+          selling_price: number
           cost_price: number
           subtotal: number
           created_at: string
@@ -401,6 +402,7 @@ export interface Database {
           batch_id: string
           quantity: number
           unit_price: number
+          selling_price: number
           cost_price: number
           subtotal: number
           created_at?: string
@@ -412,6 +414,7 @@ export interface Database {
           batch_id?: string
           quantity?: number
           unit_price?: number
+          selling_price?: number
           cost_price?: number
           subtotal?: number
           created_at?: string

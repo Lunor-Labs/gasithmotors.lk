@@ -123,8 +123,8 @@ export function SalesHistory() {
             items: saleItems.map(item => ({
                 name: item.product?.name || 'Unknown Item',
                 quantity: item.quantity,
-                unitPrice: item.unit_price,
-                subtotal: item.subtotal,
+                unitPrice: (item as any).selling_price || item.unit_price,
+                subtotal: ((item as any).selling_price || item.unit_price) * item.quantity,
                 batchNumber: item.batch?.batch_number || '',
                 warranty: item.warranty_duration && item.warranty_duration > 0 ? {
                     duration: item.warranty_duration,
@@ -132,7 +132,7 @@ export function SalesHistory() {
                     type: item.warranty_type || undefined
                 } : undefined,
             })),
-            subtotal: selectedSale.subtotal,
+            subtotal: selectedSale.subtotal + (selectedSale.discount_amount || 0),
             discount: selectedSale.discount_amount,
             tax: selectedSale.tax_amount,
             total: selectedSale.total_amount,

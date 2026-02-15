@@ -459,6 +459,7 @@ export function POS() {
           batch_id: item.batch.id,
           quantity: item.quantity,
           unit_price: item.price,
+          selling_price: item.original_price,
           cost_price: item.batch.cost_price,
           warranty_duration: item.warranty_duration,
           warranty_unit: item.warranty_unit,
@@ -483,8 +484,8 @@ export function POS() {
         items: cart.map((item) => ({
           name: item.product.name,
           quantity: item.quantity,
-          unitPrice: item.price,
-          subtotal: item.price * item.quantity,
+          unitPrice: item.original_price,
+          subtotal: item.original_price * item.quantity,
           batchNumber: item.batch.batch_number,
           warranty: item.warranty_duration ? {
             duration: item.warranty_duration,
@@ -492,7 +493,7 @@ export function POS() {
             type: item.warranty_type
           } : undefined,
         })),
-        subtotal: effectiveSubtotal,
+        subtotal: grossSubtotal,
         discount: itemLevelDiscount,
         tax: taxAmount,
         total,
@@ -533,6 +534,7 @@ export function POS() {
             batch_id: item.batch.id,
             quantity: item.quantity,
             unit_price: item.price,
+            selling_price: item.original_price,
             subtotal: item.price * item.quantity,
             total_price: item.price * item.quantity,
             cost_price: item.batch.cost_price,
@@ -583,8 +585,8 @@ export function POS() {
           items: cart.map(item => ({
             name: item.product.name,
             quantity: item.quantity,
-            unitPrice: item.price,
-            subtotal: item.price * item.quantity,
+            unitPrice: item.original_price,
+            subtotal: item.original_price * item.quantity,
             batchNumber: item.batch.batch_number,
             warranty: item.warranty_duration ? {
               duration: item.warranty_duration,
@@ -592,7 +594,7 @@ export function POS() {
               type: item.warranty_type
             } : undefined,
           })),
-          subtotal: effectiveSubtotal,
+          subtotal: grossSubtotal,
           discount: itemLevelDiscount,
           tax: taxAmount,
           serviceCharge,
