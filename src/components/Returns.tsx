@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Database } from '../lib/database.types';
-import { Plus, Eye, RotateCcw, PackageOpen } from 'lucide-react';
+import { Plus, Eye, RotateCcw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { returnService, salesService, customerService } from '../services';
@@ -14,13 +14,14 @@ type Customer = Database['public']['Tables']['customers']['Row'];
 
 interface ReturnWithDetails extends Return {
   customer: Customer | null;
+  sale: Sale | null;
   items: (ReturnItem & { product: Product | null })[];
 }
 
 export function Returns() {
   const { profile } = useAuth();
   const { showToast } = useToast();
-  const isAdmin = profile?.role === 'admin';
+  // const isAdmin = profile?.role === 'admin'; // Unused currently
   const [returns, setReturns] = useState<ReturnWithDetails[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -29,6 +30,9 @@ export function Returns() {
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'view'>('add');
   const [selectedReturn, setSelectedReturn] = useState<ReturnWithDetails | null>(null);
+  const [saleItems, setSaleItems] = useState<any[]>([]);
+  const [returnItems, setReturnItems] = useState<{ [key: string]: number }>({});
+  const [isAutoApproved, setIsAutoApproved] = useState(true);
   const [formData, setFormData] = useState({
     sale_id: '',
     customer_id: '',
@@ -36,6 +40,46 @@ export function Returns() {
     reason: '',
     total_amount: 0,
   });
+
+  useEffect(() => {
+    if (formData.sale_id) {
+      loadSaleItems(formData.sale_id);
+    } else {
+      setSaleItems([]);
+      setReturnItems({});
+    }
+  }, [formData.sale_id]);
+
+  async function loadSaleItems(saleId: string) {
+    try {
+      const items = await salesService.getSaleItems(saleId);
+      setSaleItems(items);
+      // Reset return quantities
+      const initialQuantities: { [key: string]: number } = {};
+      items.forEach((item: any) => {
+        initialQuantities[item.id] = 0;
+      });
+      setReturnItems(initialQuantities);
+    } catch (error) {
+      console.error('Error loading sale items:', error);
+      showToast('Failed to load sale items', 'error');
+    }
+  }
+
+  function handleReturnQuantityChange(saleItemId: string, quantity: number) {
+    const updatedReturnItems = { ...returnItems, [saleItemId]: quantity };
+    setReturnItems(updatedReturnItems);
+
+    // Calculate total amount based on returned items
+    let total = 0;
+    Object.entries(updatedReturnItems).forEach(([id, qty]) => {
+      const item = saleItems.find(si => si.id === id);
+      if (item && qty > 0) {
+        total += item.unit_price * qty;
+      }
+    });
+    setFormData(prev => ({ ...prev, total_amount: total }));
+  }
 
   useEffect(() => {
     loadData();
@@ -66,14 +110,30 @@ export function Returns() {
     try {
       if (!profile?.id) throw new Error('User not authenticated');
 
+      // Map return items for service
+      const itemsToReturn = Object.entries(returnItems)
+        .filter(([_, qty]) => qty > 0)
+        .map(([saleItemId, qty]) => {
+          const saleItem = saleItems.find(si => si.id === saleItemId);
+          return {
+            product_id: saleItem.product_id,
+            batch_id: saleItem.batch_id,
+            quantity: qty,
+            subtotal: saleItem.unit_price * qty,
+            unit_price: saleItem.unit_price,
+            sale_item_id: saleItem.id
+          };
+        });
+
       const returnData = await returnService.createReturn(profile.id, {
         sale_id: formData.sale_id || null,
         customer_id: formData.customer_id || null,
         total_amount: formData.total_amount,
-        refund_method: formData.refund_method,
+        refund_method: formData.refund_method || 'cash',
         reason: formData.reason || '',
-        items: [] // Empty items for now as parity with original incomplete UI
-      });
+        items: itemsToReturn,
+        status: isAutoApproved ? 'approved' : 'pending'
+      } as any);
 
       showToast(`Return created successfully!\nReturn Number: ${returnData.return_number}`, 'success');
       setShowModal(false);
@@ -151,6 +211,7 @@ export function Returns() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Number</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Sale</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
@@ -163,6 +224,9 @@ export function Returns() {
                   <tr key={ret.id} className="hover:bg-slate-50 transition">
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">{ret.return_number}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
+                      {ret.sale?.sale_number || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                       {new Date(ret.return_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
@@ -173,7 +237,7 @@ export function Returns() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 capitalize">
-                        {ret.refund_method.replace('_', ' ')}
+                        {(ret.refund_method || 'cash').replace('_', ' ')}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -207,6 +271,10 @@ export function Returns() {
                 <p className="font-medium text-slate-900">{selectedReturn.return_number}</p>
               </div>
               <div>
+                <p className="text-sm text-slate-500">Sale Number</p>
+                <p className="font-medium text-slate-900">{selectedReturn.sale?.sale_number || '-'}</p>
+              </div>
+              <div>
                 <p className="text-sm text-slate-500">Customer</p>
                 <p className="font-medium text-slate-900">{selectedReturn.customer?.name || 'Walk-in'}</p>
               </div>
@@ -222,7 +290,7 @@ export function Returns() {
               </div>
               <div>
                 <p className="text-sm text-slate-500">Refund Method</p>
-                <p className="font-medium text-slate-900 capitalize">{selectedReturn.refund_method.replace('_', ' ')}</p>
+                <p className="font-medium text-slate-900 capitalize">{(selectedReturn.refund_method || 'cash').replace('_', ' ')}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-500">Total Amount</p>
@@ -296,6 +364,35 @@ export function Returns() {
                 </select>
               </div>
 
+              {saleItems.length > 0 && (
+                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                  <h4 className="text-sm font-semibold text-slate-900 mb-3">Select Items to Return</h4>
+                  <div className="space-y-3">
+                    {saleItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-4 p-2 bg-white rounded border border-slate-200">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-slate-900">{item.product?.name}</p>
+                          <p className="text-xs text-slate-500">
+                            Purchased: {item.quantity} @ LKR {item.unit_price.toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-slate-500">Return Qty:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={returnItems[item.id] || 0}
+                            onChange={(e) => handleReturnQuantityChange(item.id, parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Customer (Optional)
@@ -355,6 +452,19 @@ export function Returns() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
                   placeholder="Reason for return..."
                 />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="auto_approve"
+                  checked={isAutoApproved}
+                  onChange={(e) => setIsAutoApproved(e.target.checked)}
+                  className="w-4 h-4 text-slate-900 border-slate-300 rounded focus:ring-slate-900"
+                />
+                <label htmlFor="auto_approve" className="text-sm font-medium text-slate-700">
+                  Approve immediately and restore stock
+                </label>
               </div>
             </div>
 

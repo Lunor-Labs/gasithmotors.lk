@@ -1,9 +1,10 @@
 import { BaseRepository } from './base/BaseRepository';
 import { DatabaseAdapter } from './base/DatabaseAdapter';
-import { Return, ReturnItem, Customer, Product } from '../types';
+import { Return, ReturnItem, Customer, Product, Sale } from '../types';
 
 export interface ReturnWithDetails extends Return {
     customer: Customer | null;
+    sale: Sale | null;
     items: (ReturnItem & { product: Product | null })[];
 }
 
@@ -22,10 +23,15 @@ export class ReturnRepository extends BaseRepository<Return> {
         const returns = await this.findAll();
 
         return Promise.all(returns.map(async (returnRecord) => {
-            const [customer, items] = await Promise.all([
+            const [customer, sale, items] = await Promise.all([
                 returnRecord.customer_id
                     ? this.adapter.query<Customer>('customers', {
                         where: [{ field: 'id', operator: '=', value: returnRecord.customer_id }]
+                    }).then(res => res[0] || null)
+                    : Promise.resolve(null),
+                returnRecord.sale_id
+                    ? this.adapter.query<Sale>('sales', {
+                        where: [{ field: 'id', operator: '=', value: returnRecord.sale_id }]
                     }).then(res => res[0] || null)
                     : Promise.resolve(null),
                 this.findItemsByReturnId(returnRecord.id)
@@ -34,6 +40,7 @@ export class ReturnRepository extends BaseRepository<Return> {
             return {
                 ...returnRecord,
                 customer,
+                sale,
                 items
             };
         }));
@@ -81,15 +88,23 @@ export class ReturnRepository extends BaseRepository<Return> {
             };
         }));
 
-        const customer = returnRecord.customer_id
-            ? await this.adapter.query<Customer>('customers', {
-                where: [{ field: 'id', operator: '=', value: returnRecord.customer_id }]
-            }).then(res => res[0] || null)
-            : null;
+        const [customer, sale] = await Promise.all([
+            returnRecord.customer_id
+                ? await this.adapter.query<Customer>('customers', {
+                    where: [{ field: 'id', operator: '=', value: returnRecord.customer_id }]
+                }).then(res => res[0] || null)
+                : null,
+            returnRecord.sale_id
+                ? await this.adapter.query<Sale>('sales', {
+                    where: [{ field: 'id', operator: '=', value: returnRecord.sale_id }]
+                }).then(res => res[0] || null)
+                : null
+        ]);
 
         return {
             ...returnRecord,
             customer,
+            sale,
             items: createdItems
         };
     }

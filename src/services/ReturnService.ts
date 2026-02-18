@@ -1,12 +1,11 @@
 import { ReturnRepository } from '../repositories/ReturnRepository';
-import { Return, ReturnItem } from '../types';
+import { Return } from '../types';
 import { logger } from '../lib/logger';
-import { SalesService } from './SalesService';
 import { ProductService } from './ProductService';
 import { CustomerService } from './CustomerService';
 
 export interface CreateReturnInput {
-    sale_id: string;
+    sale_id: string | null;
     customer_id?: string | null;
     refund_method: 'cash' | 'credit_note' | 'exchange';
     reason: string;
@@ -15,17 +14,15 @@ export interface CreateReturnInput {
         product_id: string;
         batch_id?: string;
         quantity: number;
-        reason: string;
-        condition: string;
-        refund_amount: number;
+        subtotal: number;
         unit_price: number;
+        sale_item_id?: string;
     }[];
 }
 
 export class ReturnService {
     constructor(
         private returnRepo: ReturnRepository,
-        private salesService: SalesService,
         private productService: ProductService,
         private customerService: CustomerService
     ) { }
@@ -39,20 +36,35 @@ export class ReturnService {
         }
     }
 
-    async createReturn(profileId: string, input: CreateReturnInput): Promise<Return> {
+    async createReturn(profileId: string, input: CreateReturnInput & { status?: 'pending' | 'approved' }): Promise<Return> {
         try {
-            const { items, ...returnData } = input;
+            const { items, status = 'pending', ...returnData } = input;
 
             // Generate return number
             const returnNumber = 'RET-' + Date.now().toString().slice(-6);
 
-            return await this.returnRepo.createWithItems({
+            const result = await this.returnRepo.createWithItems({
                 ...returnData,
                 return_number: returnNumber,
-                status: 'pending',
+                status: status,
                 processed_by: profileId,
                 created_at: new Date().toISOString()
             } as any, items);
+
+            // If approved immediately, restore stock
+            if (status === 'approved' && items.length > 0) {
+                for (const item of items) {
+                    if (item.batch_id) {
+                        const batches = await this.productService.getProductBatches(item.product_id);
+                        const batch = batches.find(b => b.id === item.batch_id);
+                        if (batch) {
+                            await this.productService.updateStock(batch.id, batch.current_quantity + item.quantity);
+                        }
+                    }
+                }
+            }
+
+            return result;
         } catch (error) {
             logger.error('Failed to create return', error as Error);
             throw error;
