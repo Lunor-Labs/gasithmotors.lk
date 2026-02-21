@@ -35,11 +35,8 @@ interface ImportStats {
 
 export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
     const { showToast } = useToast();
-    const [file, setFile] = useState<File | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [importing, setImporting] = useState(false);
-    const [successCount, setSuccessCount] = useState(0);
     const [previewData, setPreviewData] = useState<CSVRow[]>([]);
+    const [processedCount, setProcessedCount] = useState(0);
     const [stats, setStats] = useState<ImportStats>({ total: 0, success: 0, failed: 0, errors: [] });
     const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'complete'>('upload');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,7 +67,6 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            setFile(file);
             parseCSV(file);
         }
     };
@@ -90,120 +86,193 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
     };
 
     const processImport = async () => {
-        setImporting(true);
         setStep('importing');
+        setProcessedCount(0);
         let successCount = 0;
         let failedCount = 0;
         const errors: string[] = [];
 
-        // 1. Extract and Process Suppliers
-        const uniqueSuppliers = new Set(previewData.map(row => row.supplier_name?.trim()).filter(Boolean));
+        // 1. Extract and Process Suppliers in Bulk
+        const supplierNames = [...new Set(previewData.map(row => row.supplier_name?.trim()).filter(Boolean))];
         const supplierMap = new Map<string, string>(); // Name -> ID
 
-        for (const supplierName of uniqueSuppliers) {
-            try {
-                // Check if exists
-                const { data: existing } = await supabase
-                    .from('suppliers')
-                    .select('id')
-                    .eq('name', supplierName)
-                    .single() as any;
+        try {
+            // Bulk fetch existing suppliers
+            const { data: existingSuppliers, error: fetchError } = await (supabase
+                .from('suppliers')
+                .select('id, name')
+                .in('name', supplierNames) as any);
 
-                if (existing) {
-                    supplierMap.set(supplierName, existing.id);
-                } else {
-                    // Create new
-                    const { data: newSupplier, error } = await supabase
+            if (fetchError) throw fetchError;
+
+            (existingSuppliers as any[])?.forEach(s => supplierMap.set(s.name, s.id));
+
+            // Create missing suppliers
+            for (const supplierName of supplierNames) {
+                if (!supplierMap.has(supplierName)) {
+                    const { data: newSupplier, error: insertError } = await supabase
                         .from('suppliers')
                         .insert({ name: supplierName, active: true } as any)
                         .select('id')
                         .single() as any;
 
-                    if (error) throw error;
+                    if (insertError) {
+                        errors.push(`Failed to create supplier '${supplierName}': ${insertError.message}`);
+                        continue;
+                    }
                     if (newSupplier) supplierMap.set(supplierName, newSupplier.id);
                 }
-            } catch (err: any) {
-                errors.push(`Failed to process supplier '${supplierName}': ${err.message}`);
             }
+        } catch (err: any) {
+            errors.push(`Supplier processing error: ${err.message}`);
         }
 
-        // 2. Process Products and Batches
-        for (const row of previewData) {
-            try {
-                // Validation
-                if (!row.product_name || !row.sku || !row.cost_price || !row.markup_percentage) {
-                    throw new Error(`Missing required fields for SKU: ${row.sku || 'Unknown'}`);
-                }
+        // 2. Process Products and Batches in Chunks
+        const CHUNK_SIZE = 5; // Smaller chunks for better progress visibility
+        for (let i = 0; i < previewData.length; i += CHUNK_SIZE) {
+            const chunk = previewData.slice(i, i + CHUNK_SIZE);
 
-                const supplierId = supplierMap.get(row.supplier_name?.trim());
-                if (!supplierId) {
-                    throw new Error(`Supplier '${row.supplier_name}' not found or failed to create`);
-                }
+            await Promise.all(chunk.map(async (row: CSVRow) => {
+                try {
+                    // Validation
+                    if (!row.product_name || !row.sku || !row.cost_price || !row.markup_percentage) {
+                        throw new Error(`Missing required fields for SKU: ${row.sku || 'Unknown'}`);
+                    }
 
-                const cleanSku = row.sku.trim();
+                    const supplierId = supplierMap.get(row.supplier_name?.trim());
+                    if (!supplierId) {
+                        throw new Error(`Supplier '${row.supplier_name}' not found or failed to create`);
+                    }
 
-                // Check Product
-                let productId = '';
-                const { data: existingProduct } = await supabase
-                    .from('products')
-                    .select('id')
-                    .eq('sku', cleanSku)
-                    .single() as any;
+                    const cleanSku = row.sku.trim();
+                    const barcode = row.barcode?.trim() || null;
 
-                if (existingProduct) {
-                    productId = existingProduct.id;
-                } else {
-                    // Create Product
-                    const { data: newProduct, error: prodError } = await supabase
+                    // Check for existing product with this barcode to prevent unique constraint errors
+                    if (barcode) {
+                        const { data: barcodeConflict } = await (supabase
+                            .from('products')
+                            .select('id, sku')
+                            .eq('barcode', barcode)
+                            .single() as any);
+
+                        if (barcodeConflict && barcodeConflict.sku !== cleanSku) {
+                            throw new Error(`Barcode ${barcode} is already assigned to SKU: ${barcodeConflict.sku}`);
+                        }
+                    }
+
+                    // Check Product
+                    let productId = '';
+                    const { data: existingProduct } = await supabase
                         .from('products')
-                        .insert({
-                            sku: cleanSku,
-                            name: row.product_name.trim(),
-                            barcode: row.barcode || null,
-                            category: row.category || 'Uncategorized',
-                            description: `Imported via CSV`,
-                            unit: row.unit || 'piece',
-                            reorder_level: parseInt(row.reorder_level || '0') || 5,
-                            image_url: row.image_url || null,
-                            active: true
-                        } as any)
-                        .select('id')
+                        .select('id, barcode, image_url, reorder_level')
+                        .eq('sku', cleanSku)
                         .single() as any;
 
-                    if (prodError) throw prodError;
-                    productId = newProduct.id;
-                }
+                    const productData = {
+                        name: row.product_name.trim(),
+                        category: row.category || 'Uncategorized',
+                        description: `Imported/Updated via CSV`,
+                        unit: row.unit || 'piece',
+                        active: true,
+                        updated_at: new Date().toISOString()
+                    };
 
-                // Create Batch
-                const qty = parseInt(row.quantity || '0');
-                const costPrice = parseFloat(row.cost_price);
-                const markup = parseFloat(row.markup_percentage);
-                const sellingPrice = costPrice * (1 + markup / 100);
+                    if (existingProduct) {
+                        productId = existingProduct.id;
 
-                if (qty > 0) {
-                    const { error: batchError } = await supabase
-                        .from('product_batches')
-                        .insert({
+                        // Merge fields to not override existing with nulls
+                        const updateData = {
+                            ...productData,
+                            barcode: barcode || existingProduct.barcode, // Keep existing if current is null
+                            image_url: row.image_url || existingProduct.image_url,
+                            reorder_level: row.reorder_level ? parseInt(row.reorder_level) : existingProduct.reorder_level
+                        };
+
+                        const { error: updateError } = await (supabase
+                            .from('products')
+                            .update(updateData as any)
+                            .eq('id', productId) as any);
+
+                        if (updateError) throw updateError;
+                    } else {
+                        // Create Product
+                        const { data: newProduct, error: prodError } = await supabase
+                            .from('products')
+                            .insert({
+                                sku: cleanSku,
+                                ...productData,
+                                barcode: barcode,
+                                image_url: row.image_url || null,
+                                reorder_level: parseInt(row.reorder_level || '0') || 5,
+                                created_at: new Date().toISOString()
+                            } as any)
+                            .select('id')
+                            .single() as any;
+
+                        if (prodError) throw prodError;
+                        productId = newProduct.id;
+                    }
+
+                    // Create or Update Batch
+                    const qty = parseInt(row.quantity || '0');
+                    const costPrice = parseFloat(row.cost_price);
+                    const markup = parseFloat(row.markup_percentage);
+                    const sellingPrice = costPrice * (1 + markup / 100);
+
+                    if (qty >= 0) {
+                        const batchNumber = row.batch_number?.trim() || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+                        // Check if batch exists for this product
+                        const { data: existingBatch } = await supabase
+                            .from('product_batches')
+                            .select('id, initial_quantity')
+                            .eq('product_id', productId)
+                            .eq('batch_number', batchNumber)
+                            .single() as any;
+
+                        const baseBatchData = {
                             product_id: productId,
                             supplier_id: supplierId,
-                            batch_number: row.batch_number || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                            batch_number: batchNumber,
                             cost_price: costPrice,
                             markup_percentage: markup,
                             selling_price: Math.round(sellingPrice * 100) / 100, // Round to 2 decimals
-                            initial_quantity: qty,
                             current_quantity: qty,
-                            received_date: new Date().toISOString(),
-                            expiry_date: row.expiry_date || null
-                        } as any);
+                            expiry_date: row.expiry_date || null,
+                            updated_at: new Date().toISOString()
+                        };
 
-                    if (batchError) throw batchError;
+                        if (existingBatch) {
+                            // On update, we NEVER touch initial_quantity
+                            const { error: batchError } = await (supabase
+                                .from('product_batches')
+                                .update(baseBatchData as any)
+                                .eq('id', existingBatch.id) as any);
+
+                            if (batchError) throw batchError;
+                        } else if (qty > 0) {
+                            // On insert, we set initial_quantity
+                            const { error: batchError } = await supabase
+                                .from('product_batches')
+                                .insert({
+                                    ...baseBatchData,
+                                    initial_quantity: qty,
+                                    received_date: new Date().toISOString(),
+                                    created_at: new Date().toISOString()
+                                } as any);
+
+                            if (batchError) throw batchError;
+                        }
+                    }
+
+                    successCount++;
+                } catch (err: any) {
+                    failedCount++;
+                    errors.push(`Row ${row.sku}: ${err.message}`);
+                } finally {
+                    setProcessedCount(prev => prev + 1);
                 }
-
-                successCount++;
-            } catch (err: any) {
-                failedCount++;
-                errors.push(`Row ${row.sku}: ${err.message}`);
-            }
+            }));
         }
 
         setStats({
@@ -212,7 +281,6 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
             failed: failedCount,
             errors
         });
-        setImporting(false);
         setStep('complete');
         if (successCount > 0) {
             onSuccess();
@@ -314,7 +382,19 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                     <div className="flex flex-col items-center justify-center py-12">
                         <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
                         <p className="text-lg font-medium text-slate-900">Importing Data...</p>
-                        <p className="text-slate-500">Processing products and stock levels.</p>
+                        <div className="w-full max-w-md mt-6">
+                            <div className="flex justify-between text-sm text-slate-600 mb-2">
+                                <span>{Math.round((processedCount / previewData.length) * 100)}% Complete</span>
+                                <span>{processedCount} of {previewData.length} items</span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                                <div
+                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                                    style={{ width: `${(processedCount / previewData.length) * 100}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                        <p className="text-slate-500 mt-4">Processing products and stock levels.</p>
                     </div>
                 )}
 

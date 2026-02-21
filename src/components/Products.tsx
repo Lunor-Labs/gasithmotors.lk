@@ -332,7 +332,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
 
       // Create CSV content
       const headers = Object.keys(csvRows[0]);
-      const csvContent = '\uFEFF' + [
+      const csvContent = [
         headers.join(','),
         ...csvRows.map(row =>
           headers.map(header => {
