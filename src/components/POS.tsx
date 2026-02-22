@@ -485,7 +485,9 @@ export function POS() {
           name: item.product.name,
           quantity: item.quantity,
           unitPrice: item.original_price,
+          discountedUnitPrice: item.price,
           subtotal: item.original_price * item.quantity,
+          discountedSubtotal: item.price * item.quantity,
           batchNumber: item.batch.batch_number,
           warranty: item.warranty_duration ? {
             duration: item.warranty_duration,
@@ -586,7 +588,9 @@ export function POS() {
             name: item.product.name,
             quantity: item.quantity,
             unitPrice: item.original_price,
+            discountedUnitPrice: item.price,
             subtotal: item.original_price * item.quantity,
+            discountedSubtotal: item.price * item.quantity,
             batchNumber: item.batch.batch_number,
             warranty: item.warranty_duration ? {
               duration: item.warranty_duration,

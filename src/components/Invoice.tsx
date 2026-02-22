@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { X, Printer, Share2 } from 'lucide-react';
 import logo from '../assets/favicon.jpeg';
 
@@ -5,7 +6,9 @@ export interface InvoiceItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  discountedUnitPrice?: number;
   subtotal: number;
+  discountedSubtotal?: number;
   batchNumber: string;
   warranty?: {
     duration: number;
@@ -37,6 +40,8 @@ interface InvoiceProps {
 }
 
 export function Invoice({ invoiceData, onClose }: InvoiceProps) {
+  const [showDiscount, setShowDiscount] = useState(false);
+
   const handlePrint = () => {
     window.print();
   };
@@ -64,15 +69,18 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
       if (item.warranty && item.warranty.duration > 0) {
         message += `   Warranty: ${item.warranty.duration} ${item.warranty.unit} ${item.warranty.type ? `(${item.warranty.type})` : ''}\n`;
       }
-      message += `   ${item.quantity} x ${item.unitPrice.toFixed(2)} = LKR ${item.subtotal.toFixed(2)}\n\n`;
+      const printUnitPrice = !showDiscount && item.discountedUnitPrice !== undefined ? item.discountedUnitPrice : item.unitPrice;
+      const printSubtotal = !showDiscount && item.discountedSubtotal !== undefined ? item.discountedSubtotal : item.subtotal;
+      message += `   ${item.quantity} x ${printUnitPrice.toFixed(2)} = LKR ${printSubtotal.toFixed(2)}\n\n`;
     });
 
     message += `--------------------------------\n`;
 
     // Summary details (Subtotal, Discount, Tax)
     if (invoiceData.discount > 0 || invoiceData.tax > 0 || (invoiceData.serviceCharge && invoiceData.serviceCharge > 0)) {
-      message += `Subtotal: LKR ${invoiceData.subtotal.toFixed(2)}\n`;
-      if (invoiceData.discount > 0) message += `Discount: -LKR ${invoiceData.discount.toFixed(2)}\n`;
+      const displaySubtotal = !showDiscount ? (invoiceData.subtotal - invoiceData.discount) : invoiceData.subtotal;
+      message += `Subtotal: LKR ${displaySubtotal.toFixed(2)}\n`;
+      if (showDiscount && invoiceData.discount > 0) message += `Discount: -LKR ${invoiceData.discount.toFixed(2)}\n`;
       if (invoiceData.tax > 0) message += `Tax: LKR ${invoiceData.tax.toFixed(2)}\n`;
       if (invoiceData.serviceCharge && invoiceData.serviceCharge > 0) message += `Service Charge: LKR ${invoiceData.serviceCharge.toFixed(2)}\n`;
       message += `\n`;
@@ -107,27 +115,40 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
           <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between no-print">
             <h2 className="text-xl font-bold text-slate-900">Invoice</h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleWhatsAppShare}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-              >
-                <Share2 className="w-4 h-4" />
-                WhatsApp
-              </button>
-              <button
-                onClick={handlePrint}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition"
-              >
-                <Printer className="w-4 h-4" />
-                Print
-              </button>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-slate-100 rounded-lg transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="flex items-center gap-4">
+              {invoiceData.discount > 0 && (
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showDiscount}
+                    onChange={(e) => setShowDiscount(e.target.checked)}
+                    className="w-4 h-4 text-slate-900 border-slate-300 rounded focus:ring-slate-900"
+                  />
+                  Show Discount
+                </label>
+              )}
+              <div className="flex items-center gap-2 border-l pl-4 border-slate-200">
+                <button
+                  onClick={handleWhatsAppShare}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                >
+                  <Share2 className="w-4 h-4" />
+                  WhatsApp
+                </button>
+                <button
+                  onClick={handlePrint}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -201,10 +222,10 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                       )}
                       <div className="flex justify-between text-slate-600 mt-1">
                         <span className="pl-4">
-                          {item.quantity} x LKR {item.unitPrice.toFixed(2)}
+                          {item.quantity} x LKR {(!showDiscount && item.discountedUnitPrice !== undefined ? item.discountedUnitPrice : item.unitPrice).toFixed(2)}
                         </span>
                         <span className="font-medium text-slate-900">
-                          LKR {item.subtotal.toFixed(2)}
+                          LKR {(!showDiscount && item.discountedSubtotal !== undefined ? item.discountedSubtotal : item.subtotal).toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -220,10 +241,10 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                 <div className="flex justify-between">
                   <span className="text-slate-600">Subtotal:</span>
                   <span className="font-medium text-slate-900">
-                    LKR {invoiceData.subtotal.toFixed(2)}
+                    LKR {(!showDiscount ? (invoiceData.subtotal - invoiceData.discount) : invoiceData.subtotal).toFixed(2)}
                   </span>
                 </div>
-                {invoiceData.discount > 0 && (
+                {showDiscount && invoiceData.discount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-slate-600">Discount:</span>
                     <span className="font-medium text-slate-900">

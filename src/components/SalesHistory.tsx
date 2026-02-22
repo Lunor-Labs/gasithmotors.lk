@@ -124,7 +124,9 @@ export function SalesHistory() {
                 name: item.product?.name || 'Unknown Item',
                 quantity: item.quantity,
                 unitPrice: (item as any).selling_price || item.unit_price,
+                discountedUnitPrice: item.unit_price,
                 subtotal: ((item as any).selling_price || item.unit_price) * item.quantity,
+                discountedSubtotal: item.unit_price * item.quantity,
                 batchNumber: item.batch?.batch_number || '',
                 warranty: item.warranty_duration && item.warranty_duration > 0 ? {
                     duration: item.warranty_duration,
