@@ -20,6 +20,7 @@ import { CartItemsList } from './pos/CartItemsList';
 
 import { db } from '../lib/db';
 import { SyncStatus } from './pos/SyncStatus';
+import { Pagination } from './ui';
 import { salesService, customerService, productService } from '../services'; // Import services
 import { logger } from '../lib/logger';
 import { playScannerBeep } from '../utils/audio';
@@ -732,29 +733,12 @@ export function POS() {
                 />
 
                 {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
-                    <div className="text-sm text-slate-600">
-                      Page {page} of {totalPages}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        Previous
-                      </button>
-                      <button
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page >= totalPages}
-                        className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  className="mt-6 pt-4 border-t border-slate-100"
+                />
               </>
             )}
           </div>

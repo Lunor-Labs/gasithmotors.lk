@@ -11,7 +11,7 @@ import { ProductDetailsView } from './products/ProductDetailsView';
 import { ProductImporter } from './products/ProductImporter';
 import { productService, supplierService } from '../services';
 import { logger } from '../lib/logger';
-import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
+import { Modal, SearchBar, LoadingSpinner, EmptyState, Pagination } from './ui';
 import { playScannerBeep } from '../utils/audio';
 import { useRef } from 'react';
 
@@ -474,27 +474,12 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
             />
           </div>
 
-          <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50">
-            <div className="text-sm text-slate-600">
-              Page {page} of {totalPages || 1}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1 border border-slate-300 rounded-md disabled:opacity-50 hover:bg-white transition bg-white"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages || totalPages === 0}
-                className="px-3 py-1 border border-slate-300 rounded-md disabled:opacity-50 hover:bg-white transition bg-white"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages || 1}
+            onPageChange={setPage}
+            className="p-4 border-t border-slate-200 bg-slate-50"
+          />
         </div>
       )}
 
