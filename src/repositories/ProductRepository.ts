@@ -27,6 +27,7 @@ export class ProductRepository extends BaseRepository<Product> {
         while (hasMoreProducts) {
             const chunk = await this.adapter.query<Product>(this.tableName, {
                 where: [{ field: 'active', operator: '=', value: true }],
+                orderBy: [{ field: 'sku', direction: 'asc' }],
                 offset: fromProduct,
                 limit: CHUNK_SIZE,
             });

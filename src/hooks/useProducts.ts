@@ -23,21 +23,26 @@ export function useProducts(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
+  const [lastSync, setLastSync] = useState<number>(0);
 
   /**
    * Sync products from database to IndexedDB for offline use
    */
-  const syncProducts = useCallback(async () => {
+  const syncProducts = useCallback(async (force = false) => {
     if (!navigator.onLine) {
       logger.debug('Skipping sync - offline');
       return;
     }
 
-    try {
-      setSyncStatus('syncing');
-      logger.info('Starting product sync');
+    // Throttle syncs - skip if synced in the last 60 seconds unless forced
+    const now = Date.now();
+    if (!force && now - lastSync < 60000) {
+      logger.debug('Skipping sync - recently updated');
+      return;
+    }
 
-      // Use ProductService to fetch all products
+    try {
+      // Fetch all products from server
       const products = await productService.getAllProducts();
 
       // Convert to ProductWithBatches format for IndexedDB
@@ -47,11 +52,20 @@ export function useProducts(
         total_stock: product.total_stock || 0,
       }));
 
-      // Update IndexedDB - clear first to remove inactive products
-      await db.products.clear();
+      // Update IndexedDB - bulkPut updates existing and adds new
+      // We don't clear() to avoid UI flickering ("shaking")
       await db.products.bulkPut(productsWithBatches);
 
+      // Remove local products that are no longer on the server
+      const serverIds = new Set(products.map(p => p.id));
+      const localIds = await db.products.toCollection().primaryKeys();
+      const idsToRemove = localIds.filter(id => !serverIds.has(id));
+      if (idsToRemove.length > 0) {
+        await db.products.bulkDelete(idsToRemove);
+      }
+
       setSyncStatus('idle');
+      setLastSync(Date.now());
       logger.info('Product sync completed', { count: products.length });
     } catch (err) {
       logger.error('Product sync failed', err as Error);
@@ -141,11 +155,24 @@ export function useProducts(
 
       // Pagination
       const count = await collection.count();
+      // Get data and handle sorting
+      let data: ProductWithBatches[];
       const offset = (page - 1) * pageSize;
-      const data = await collection
-        .offset(offset)
-        .limit(pageSize)
-        .toArray();
+
+      if (!searchQuery.trim() && stockFilter === 'all') {
+        // Optimized path: Use Dexie to get all then sort in memory for natural ordering
+        // Standard index-based orderBy is lexicographical (1, 10, 100)
+        // For natural sort (1, 2, 10), we sort in memory. 
+        // Modern JS handles several thousand items in < 5ms.
+        const allProducts = await db.products.toArray();
+        allProducts.sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true, sensitivity: 'base' }));
+        data = allProducts.slice(offset, offset + pageSize);
+      } else {
+        // Filtered path: Fetch all filtered items and sort in memory natural order
+        const allFiltered = await collection.toArray();
+        allFiltered.sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true, sensitivity: 'base' }));
+        data = allFiltered.slice(offset, offset + pageSize);
+      }
 
       return { products: data, totalCount: count };
     } catch (err) {
