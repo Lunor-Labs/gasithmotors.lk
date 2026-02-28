@@ -117,7 +117,7 @@ export function SalesHistory() {
 
         const data: InvoiceData = {
             saleNumber: selectedSale.sale_number,
-            date: new Date(selectedSale.sale_date).toLocaleDateString(),
+            date: new Date(selectedSale.sale_date).toLocaleString(),
             customerName: selectedSale.customer?.name || 'Walk-in Customer',
             customerPhone: selectedSale.customer?.phone || undefined,
             items: saleItems.map(item => ({

@@ -479,7 +479,7 @@ export function POS() {
       // Prepare invoice data
       setInvoiceData({
         saleNumber: sale.sale_number,
-        date: new Date().toLocaleDateString(),
+        date: new Date().toLocaleString(),
         customerName: selectedCustomer?.name || 'Walk-in Customer',
         customerPhone: selectedCustomer?.phone,
         items: cart.map((item) => ({
@@ -582,7 +582,7 @@ export function POS() {
         // Show Invoice with warning
         setInvoiceData({
           saleNumber: `[OFFLINE] ${saleNumber} `,
-          date: new Date().toLocaleDateString(),
+          date: new Date().toLocaleString(),
           customerName: selectedCustomer?.name,
           customerPhone: selectedCustomer?.phone,
           items: cart.map(item => ({

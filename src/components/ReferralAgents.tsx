@@ -214,7 +214,7 @@ export function ReferralAgents() {
 
       const data: InvoiceData = {
         saleNumber: sale.sale_number,
-        date: new Date(sale.sale_date).toLocaleDateString(),
+        date: new Date(sale.sale_date).toLocaleString(),
         customerName: sale.customer?.name || 'Walk-in Customer',
         customerPhone: sale.customer?.phone || undefined,
         items: items.map((item: any) => ({

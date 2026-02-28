@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Printer, Share2 } from 'lucide-react';
 import logo from '../assets/favicon.jpeg';
+import qrCode from '../assets/QR.jpeg';
 
 export interface InvoiceItem {
   name: string;
@@ -175,7 +176,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                   <span className="font-bold text-slate-900">{invoiceData.saleNumber}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-medium text-slate-600">Date:</span>
+                  <span className="font-medium text-slate-600">Date/Time:</span>
                   <span className="font-bold text-slate-900">{invoiceData.date}</span>
                 </div>
                 {invoiceData.customerName && (
@@ -314,9 +315,15 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
               <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
 
               {/* Footer */}
-              <div className="text-center pt-2">
-                <p className="text-sm text-slate-600 print:text-xs">Thank you for your business!</p>
-                <p className="text-xs text-slate-500 mt-1 print:text-[10px]">This is a computer generated invoice</p>
+              <div className="text-center pt-2 space-y-4">
+                <div className="flex flex-col items-center gap-2">
+                  <p className="text-sm font-bold text-slate-900 print:text-xs">Review us on Google</p>
+                  <img src={qrCode} alt="QR Code" className="h-24 w-24 object-contain print:h-20 print:w-20" />
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 print:text-xs">Thank you for your business!</p>
+                  <p className="text-xs text-slate-500 mt-1 print:text-[10px]">This is a computer generated invoice</p>
+                </div>
               </div>
             </div>
           </div>
