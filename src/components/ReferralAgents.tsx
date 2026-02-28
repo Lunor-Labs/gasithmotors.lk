@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Database } from '../lib/database.types';
-import { Plus, UserCheck, DollarSign, Edit, CheckCircle, PackageOpen } from 'lucide-react';
+import { Plus, UserCheck, DollarSign, Edit, CheckCircle, PackageOpen, Eye } from 'lucide-react';
 import { customerService, salesService } from '../services';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
+import { Invoice, InvoiceData } from './Invoice';
 
 type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
 
@@ -58,6 +59,11 @@ export function ReferralAgents() {
   const [foundSale, setFoundSale] = useState<any>(null);
   const [customCommissionAmount, setCustomCommissionAmount] = useState<number>(0);
   const [searchingSale, setSearchingSale] = useState(false);
+
+  // Invoice State
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
+  const [loadingInvoice, setLoadingInvoice] = useState(false);
 
   useEffect(() => {
     loadAgents();
@@ -192,6 +198,57 @@ export function ReferralAgents() {
       loadCommissions(selectedAgent.id);
     } catch (error: any) {
       showToast(error.message || 'Failed to add commission', 'error');
+    }
+  }
+
+  async function handleViewInvoice(saleId: string) {
+    setLoadingInvoice(true);
+    try {
+      const sale = await salesService.getSaleById(saleId);
+      const items = await salesService.getSaleItems(saleId);
+
+      if (!sale) {
+        showToast('Sale not found', 'error');
+        return;
+      }
+
+      const data: InvoiceData = {
+        saleNumber: sale.sale_number,
+        date: new Date(sale.sale_date).toLocaleDateString(),
+        customerName: sale.customer?.name || 'Walk-in Customer',
+        customerPhone: sale.customer?.phone || undefined,
+        items: items.map((item: any) => ({
+          name: item.product?.name || 'Unknown Item',
+          quantity: item.quantity,
+          unitPrice: item.selling_price || item.unit_price,
+          discountedUnitPrice: item.unit_price,
+          subtotal: (item.selling_price || item.unit_price) * item.quantity,
+          discountedSubtotal: item.unit_price * item.quantity,
+          batchNumber: item.batch?.batch_number || '',
+          warranty: item.warranty_duration && item.warranty_duration > 0 ? {
+            duration: item.warranty_duration,
+            unit: (item.warranty_unit as any) || 'months',
+            type: item.warranty_type || undefined
+          } : undefined,
+        })),
+        subtotal: sale.subtotal + (sale.discount_amount || 0),
+        discount: sale.discount_amount,
+        tax: sale.tax_amount,
+        total: sale.total_amount,
+        paidAmount: sale.paid_amount,
+        changeAmount: Math.max(0, sale.paid_amount - sale.total_amount),
+        paymentMethod: sale.payment_method || 'cash',
+        cashierName: sale.cashier?.full_name || 'System',
+        serviceCharge: sale.service_charge || 0,
+      };
+
+      setInvoiceData(data);
+      setShowInvoice(true);
+    } catch (error) {
+      console.error('Error loading invoice:', error);
+      showToast('Failed to load invoice', 'error');
+    } finally {
+      setLoadingInvoice(false);
     }
   }
 
@@ -504,6 +561,7 @@ export function ReferralAgents() {
                                 <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Sale #</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Sale Amount</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Commission</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 text-left">
@@ -513,6 +571,20 @@ export function ReferralAgents() {
                                   <td className="px-4 py-3 text-sm font-medium text-slate-900 text-left">{c.sale?.sale_number}</td>
                                   <td className="px-4 py-3 text-sm text-slate-600 text-right">LKR {c.sale_amount.toFixed(2)}</td>
                                   <td className="px-4 py-3 text-sm font-bold text-slate-900 text-right">LKR {c.commission_amount.toFixed(2)}</td>
+                                  <td className="px-4 py-3 text-sm text-right">
+                                    <button
+                                      onClick={() => handleViewInvoice(c.sale_id)}
+                                      disabled={loadingInvoice}
+                                      className="p-1.5 hover:bg-slate-100 rounded-lg transition text-slate-600 hover:text-slate-900"
+                                      title="View Invoice"
+                                    >
+                                      {loadingInvoice ? (
+                                        <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+                                      ) : (
+                                        <Eye className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -537,6 +609,7 @@ export function ReferralAgents() {
                               <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Payment Date</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Sale #</th>
                               <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount Paid</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 text-left">
@@ -545,6 +618,16 @@ export function ReferralAgents() {
                                 <td className="px-4 py-3 text-sm text-slate-600 text-left">{c.payment_date ? new Date(c.payment_date).toLocaleDateString() : 'N/A'}</td>
                                 <td className="px-4 py-3 text-sm text-slate-900 text-left">{c.sale?.sale_number}</td>
                                 <td className="px-4 py-3 text-sm font-medium text-slate-900 text-right">LKR {c.commission_amount.toFixed(2)}</td>
+                                <td className="px-4 py-3 text-sm text-right">
+                                  <button
+                                    onClick={() => handleViewInvoice(c.sale_id)}
+                                    disabled={loadingInvoice}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition text-slate-600 hover:text-slate-900"
+                                    title="View Invoice"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -688,6 +771,16 @@ export function ReferralAgents() {
           )}
         </div>
       </Modal>
+
+      {/* Invoice Component */}
+      {showInvoice && invoiceData && (
+        <div className="z-[70] relative text-left">
+          <Invoice
+            invoiceData={invoiceData}
+            onClose={() => setShowInvoice(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -513,6 +513,18 @@ export class SalesService {
     }
 
     /**
+     * Get a single sale by ID with details
+     */
+    async getSaleById(saleId: string): Promise<any> {
+        try {
+            return await this.saleRepo.findByIdWithItems(saleId);
+        } catch (error) {
+            logger.error('Failed to fetch sale by ID', error as Error, { saleId });
+            throw new Error('Unable to load sale details');
+        }
+    }
+
+    /**
      * Get items for a specific sale with details
      */
     async getSaleItems(saleId: string): Promise<any[]> {
