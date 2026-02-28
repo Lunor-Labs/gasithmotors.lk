@@ -322,7 +322,9 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
                 </div>
                 <div>
                   <p className="text-sm text-slate-600 print:text-xs">Thank you for your business!</p>
-                  <p className="text-xs text-slate-500 mt-1 print:text-[10px]">This is a computer generated invoice</p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[10px] text-slate-400 font-medium">System Powered by <span className="font-bold border-b border-slate-300">Lunor Labs</span></p>
+                  </div>
                 </div>
               </div>
             </div>
