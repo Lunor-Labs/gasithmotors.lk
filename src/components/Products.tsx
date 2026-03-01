@@ -297,6 +297,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
               supplier_name: batch.supplier?.name || '',
               cost_price: batch.cost_price || 0,
               markup_percentage: batch.markup_percentage || 0,
+              selling_price: batch.selling_price || 0,
               quantity: batch.current_quantity || 0,
               batch_number: batch.batch_number || '',
               expiry_date: batch.expiry_date || '',
@@ -306,7 +307,6 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
             });
           }
         } else {
-          // Product has no stock/batches - export as single row with empty batch fields
           csvRows.push({
             product_name: product.name,
             sku: product.sku,
@@ -315,6 +315,7 @@ export function Products({ initialStockFilter = 'all' }: ProductsProps) {
             supplier_name: '',
             cost_price: 0,
             markup_percentage: 0,
+            selling_price: 0,
             quantity: 0,
             batch_number: '',
             expiry_date: '',

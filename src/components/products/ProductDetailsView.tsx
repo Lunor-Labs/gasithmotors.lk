@@ -189,7 +189,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
                   <input
                     required
                     type="number"
-                    step="0.01"
+                    step="any"
                     value={stockFormData.cost_price || ''}
                     onChange={(e) => {
                       const cost = parseFloat(e.target.value) || 0;
@@ -205,7 +205,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
                   <input
                     required
                     type="number"
-                    step="0.1"
+                    step="any"
                     value={stockFormData.markup_percentage || ''}
                     onChange={(e) => {
                       const markup = parseFloat(e.target.value) || 0;
@@ -221,7 +221,7 @@ export function ProductDetailsView({ product, onClose, onUpdate, defaultShowAddS
                   <input
                     required
                     type="number"
-                    step="0.01"
+                    step="any"
                     value={stockFormData.selling_price || ''}
                     onChange={(e) => {
                       const selling = parseFloat(e.target.value) || 0;

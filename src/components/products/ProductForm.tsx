@@ -279,7 +279,7 @@ export function ProductForm({
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="any"
                   value={formData.cost_price || ''}
                   onChange={(e) => {
                     const cost = parseFloat(e.target.value) || 0;
@@ -298,7 +298,7 @@ export function ProductForm({
                 </label>
                 <input
                   type="number"
-                  step="0.1"
+                  step="any"
                   value={formData.markup_percentage || ''}
                   onChange={(e) => {
                     const markup = parseFloat(e.target.value) || 0;
@@ -317,7 +317,7 @@ export function ProductForm({
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="any"
                   value={formData.selling_price || ''}
                   onChange={(e) => {
                     const selling = parseFloat(e.target.value) || 0;

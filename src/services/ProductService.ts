@@ -165,12 +165,16 @@ export class ProductService {
 
             // If initial stock is provided, create a batch
             if (initial_quantity && initial_quantity > 0) {
+                const finalMarkup = markup_percentage !== undefined ? markup_percentage :
+                    (cost_price > 0 ? ((selling_price - cost_price) / cost_price) * 100 : 0);
+
                 await this.createBatch({
                     product_id: product.id,
                     supplier_id: supplier_id || null,
                     initial_quantity,
                     current_quantity: initial_quantity,
                     cost_price: cost_price || 0,
+                    markup_percentage: parseFloat(finalMarkup.toFixed(2)),
                     selling_price: selling_price || 0,
                     received_date: new Date().toISOString().split('T')[0],
                     batch_number: `B-${Date.now()}`,

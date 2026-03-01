@@ -220,15 +220,40 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                     const sellingPrice = costPrice * (1 + markup / 100);
 
                     if (qty >= 0) {
-                        const batchNumber = row.batch_number?.trim() || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                        let batchNumber = row.batch_number?.trim();
+                        let existingBatchId = null;
 
-                        // Check if batch exists for this product
-                        const { data: existingBatch } = await supabase
-                            .from('product_batches')
-                            .select('id, initial_quantity')
-                            .eq('product_id', productId)
-                            .eq('batch_number', batchNumber)
-                            .single() as any;
+                        if (batchNumber) {
+                            // Check for specific batch
+                            const { data: batch } = await supabase
+                                .from('product_batches')
+                                .select('id')
+                                .eq('product_id', productId)
+                                .eq('batch_number', batchNumber)
+                                .single() as any;
+                            if (batch) existingBatchId = batch.id;
+                        } else {
+                            // No batch number provided - find the most recent batch to update if qty is 0,
+                            // or create a new one if qty > 0
+                            if (qty === 0) {
+                                const { data: latestBatch } = await supabase
+                                    .from('product_batches')
+                                    .select('id, batch_number')
+                                    .eq('product_id', productId)
+                                    .order('received_date', { ascending: false })
+                                    .limit(1)
+                                    .single() as any;
+
+                                if (latestBatch) {
+                                    existingBatchId = latestBatch.id;
+                                    batchNumber = latestBatch.batch_number;
+                                }
+                            }
+
+                            if (!batchNumber) {
+                                batchNumber = `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                            }
+                        }
 
                         const baseBatchData = {
                             product_id: productId,
@@ -242,12 +267,12 @@ export function ProductImporter({ onClose, onSuccess }: ProductImporterProps) {
                             updated_at: new Date().toISOString()
                         };
 
-                        if (existingBatch) {
+                        if (existingBatchId) {
                             // On update, we NEVER touch initial_quantity
                             const { error: batchError } = await (supabase
                                 .from('product_batches')
                                 .update(baseBatchData as any)
-                                .eq('id', existingBatch.id) as any);
+                                .eq('id', existingBatchId) as any);
 
                             if (batchError) throw batchError;
                         } else if (qty > 0) {
