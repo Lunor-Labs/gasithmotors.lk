@@ -43,6 +43,18 @@ interface InvoiceProps {
 export function Invoice({ invoiceData, onClose }: InvoiceProps) {
   const [showDiscount, setShowDiscount] = useState(false);
 
+  // Calculate dynamic height for thermal printer to prevent cutting in the middle
+  // Base height (header, padding, totals, footer) is roughly 120mm
+  // Each item takes approximately 12-25mm depending on text wrapping
+  const printHeight = 120 + invoiceData.items.reduce((acc, item) => {
+    let itemH = 12; // Base height for item name + price/qty line
+    if (item.name.length > 25) itemH += 6; // Extra line for long name
+    if (item.name.length > 50) itemH += 6; // Another extra line
+    if (item.batchNumber) itemH += 4;
+    if (item.warranty && item.warranty.duration > 0) itemH += 4;
+    return acc + itemH;
+  }, 0) + (showDiscount && invoiceData.discount > 0 ? 5 : 0) + (invoiceData.tax > 0 ? 5 : 0);
+
   const handlePrint = () => {
     window.print();
   };
@@ -335,7 +347,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
       <style>{`
         /* Print Styles for 80mm Thermal Printer */
         @page {
-          size: 80mm auto;
+          size: 80mm ${printHeight}mm;
           margin: 0;
         }
 
