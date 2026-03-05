@@ -47,9 +47,9 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
   // Base height (header, padding, totals, footer) is roughly 130mm
   // Each item takes approximately 10-15mm
   const printHeight = 130 + invoiceData.items.reduce((acc, item) => {
-    let itemH = 10; // Base height for item name + price/qty line
-    if (item.name.length > 25) itemH += 5; // Extra line for long name
-    if (item.name.length > 50) itemH += 5; // Another extra line
+    let itemH = 12; // Increased base height per item
+    if (item.name.length > 30) itemH += 8; // Extra line for long name
+    if (item.name.length > 60) itemH += 8; // Another extra line
     if (item.batchNumber) itemH += 4;
     if (item.warranty && item.warranty.duration > 0) itemH += 4;
     return acc + itemH;
@@ -426,12 +426,13 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
           }
 
           /* Truncate long names in print to save space */
+          /* Allow item names to wrap to full lines in print */
           .truncate-print {
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            max-width: 60mm !important;
-            display: inline-block !important;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            overflow: visible !important;
+            display: block !important;
+            width: 100% !important;
           }
 
           /* Explicitly hide batch and other info if needed */
