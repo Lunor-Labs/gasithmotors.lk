@@ -43,13 +43,13 @@ interface InvoiceProps {
 export function Invoice({ invoiceData, onClose }: InvoiceProps) {
   const [showDiscount, setShowDiscount] = useState(false);
 
-  // Calculate dynamic height for thermal printer to prevent cutting in the middle
-  // Base height (header, padding, totals, footer) is roughly 120mm
-  // Each item takes approximately 12-25mm depending on text wrapping
-  const printHeight = 120 + invoiceData.items.reduce((acc, item) => {
-    let itemH = 12; // Base height for item name + price/qty line
-    if (item.name.length > 25) itemH += 6; // Extra line for long name
-    if (item.name.length > 50) itemH += 6; // Another extra line
+  // Calculate dynamic height for thermal printer
+  // Base height (header, padding, totals, footer) is roughly 130mm
+  // Each item takes approximately 10-15mm
+  const printHeight = 130 + invoiceData.items.reduce((acc, item) => {
+    let itemH = 10; // Base height for item name + price/qty line
+    if (item.name.length > 25) itemH += 5; // Extra line for long name
+    if (item.name.length > 50) itemH += 5; // Another extra line
     if (item.batchNumber) itemH += 4;
     if (item.warranty && item.warranty.duration > 0) itemH += 4;
     return acc + itemH;
@@ -357,12 +357,11 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
             margin: 0 !important;
             padding: 0 !important;
             width: 80mm !important;
-            height: 0 !important; /* Collapse height to hide background pages */
-            min-height: 0 !important;
+            height: ${printHeight}mm !important;
             background: white !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            overflow: visible !important; /* Allow invoice to overflow the 0 height body */
+            overflow: hidden !important;
           }
 
           /* Hide text and set height to 0 for all elements to collapse page */
@@ -395,10 +394,10 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
             top: 0 !important;
             width: 80mm !important;
             margin: 0 !important;
-            padding: 3mm 5mm 3mm 18mm !important; /* top right bottom left */
+            padding: 4mm 5mm !important; /* Proper padding for 80mm paper */
             background: white !important;
             box-sizing: border-box !important;
-            font-size: 12px !important; /* Base font size for thermal */
+            font-size: 12px !important;
           }
 
           /* Explicitly hide the modal backdrop functionality */
@@ -431,7 +430,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
             white-space: nowrap !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
-            max-width: 45mm !important;
+            max-width: 60mm !important;
             display: inline-block !important;
           }
 
