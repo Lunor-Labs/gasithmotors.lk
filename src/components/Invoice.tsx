@@ -123,15 +123,29 @@ function buildReceiptHTML(
     /*
      * THERMAL RECEIPT PRINT CSS
      * ─────────────────────────────────────────────────────────────────────
-     * KEY PRINCIPLE: Use ONLY physical units (mm, pt) for ALL sizes.
-     * Browsers scale px-based content to fit the page, shrinking text when
-     * there are many items. Physical units are immune to that scaling.
+     * PAPER WIDTH MISMATCH HANDLING
+     * ─────────────────────────────────────────────────────────────────────
+     * Printer driver (CUPS/PPD) is configured for: 4 inches = 101.6mm
+     * Physical paper roll loaded:                  3.15 inches = 80mm
+     *
+     * The print head is 101.6mm wide. The 80mm paper sits flush to the
+     * LEFT edge of the print head. So:
+     *   • @page width MUST be 101.6mm  ← what the driver sends to the head
+     *   • Receipt content MUST be      ← within the left 80mm of the page
+     *     ≤76mm wide and left-aligned     so it lands on physical paper
+     *   • The right 21.6mm of the page ← unused (no paper there)
      *
      * @page height is patched by JS after measuring actual content height
      * so the thermal cutter fires exactly after the last printed line.
+     *
+     * KEY PRINCIPLE: Use ONLY physical units (mm, pt) for ALL sizes.
+     * Browsers scale px-based content to fit the page, shrinking text when
+     * there are many items. Physical units are immune to that scaling.
      */
     @page {
-      size: 80mm auto;   /* JS will override with exact mm height */
+      /* Width = driver's configured paper width (4in), NOT the roll width.
+         JS will override height with the exact measured content height. */
+      size: 101.6mm auto;
       margin: 0mm;
     }
 
@@ -144,13 +158,13 @@ function buildReceiptHTML(
     }
 
     html {
-      /* Lock render width to exactly 80mm — no browser rescaling */
-      width: 80mm;
+      /* Must match @page width so the browser doesn't apply fit-to-page scaling */
+      width: 101.6mm;
       font-size: 8pt;        /* base: 1rem = 8pt ≈ 2.8mm */
     }
 
     body {
-      width: 80mm;
+      width: 101.6mm;
       background: #fff;
       font-family: 'Courier New', Courier, monospace;
       font-size: 8pt;
@@ -159,7 +173,15 @@ function buildReceiptHTML(
     }
 
     #receipt {
-      width: 76mm;           /* 80mm − 2×2mm side padding */
+      /*
+       * Content width: 76mm — comfortably within the 80mm physical paper.
+       * margin-left: 0  — left-aligned so it falls on physical paper.
+       *   (The right ~25mm of the 101.6mm page overhangs the paper edge
+       *    and is simply not printed because there is no paper there.)
+       */
+      width: 76mm;
+      margin-left: 0;
+      margin-right: auto;
       padding: 3mm 2mm 5mm;
     }
 
@@ -340,7 +362,9 @@ function buildReceiptHTML(
     // Inject precise @page that overrides CUPS/driver paper height
     var style = document.createElement('style');
     style.id = 'dynamic-page-style';
-    style.textContent = '@page { size: 80mm ' + heightMm + 'mm; margin: 0mm; }';
+    // Width = 101.6mm (4in) — matches the CUPS/driver configured paper width.
+    // Height = measured content height — tells the cutter exactly where to fire.
+    style.textContent = '@page { size: 101.6mm ' + heightMm + 'mm; margin: 0mm; }';
     document.head.appendChild(style);
 
     window.focus();
@@ -399,7 +423,7 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
     : invoiceData.subtotal;
 
   /**
-   * Industry-standard popup window approach for thermal receipt printing.
+   * Popup window approach for thermal receipt printing.
    *
    * Why NOT window.print() on the SPA:
    *   - The browser prints the ENTIRE page, causing duplicate regions.
@@ -408,9 +432,15 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
    *
    * Why popup window:
    *   - Completely isolated HTML document — only the receipt exists.
-   *   - @page { size: 80mm auto } works perfectly with no interference.
+   *   - @page size rule works with no interference from app styles.
    *   - Single copy, guaranteed. Auto-closes after print.
    *   - Used by Square, Shopify POS, WooCommerce POS, etc.
+   *
+   * Popup dimensions:
+   *   width  = 384px ≈ 101.6mm at 96dpi  (matches the 4-inch driver width)
+   *   height = 4000px (very tall so ALL content renders at natural height
+   *            before the JS height measurement — prevents clipping on
+   *            long receipts with many items)
    */
   const handlePrint = () => {
     // Resolve asset URLs relative to the current page origin
@@ -419,8 +449,9 @@ export function Invoice({ invoiceData, onClose }: InvoiceProps) {
 
     const html = buildReceiptHTML(invoiceData, showDiscount, logoUrl, qrUrl);
 
-    // Open a small, borderless popup — size doesn't matter, it will auto-resize to paper
-    const popup = window.open('', '_blank', 'width=302,height=600,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
+    // 384px wide = 101.6mm @ 96dpi (matches 4-inch driver config)
+    // 4000px tall = ensures even the longest receipt renders fully before measurement
+    const popup = window.open('', '_blank', 'width=384,height=4000,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
     if (!popup) {
       alert('Please allow popups for this site to enable printing.');
       return;
