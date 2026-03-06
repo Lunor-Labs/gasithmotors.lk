@@ -155,20 +155,35 @@ function buildReceiptHTML(
       padding: 0;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      /*
+       * THERMAL PRINTING: Disable ALL font smoothing / anti-aliasing.
+       * Thermal heads are binary (dot on or off). Anti-aliased grey pixels
+       * don't heat the paper enough → text looks faint or missing.
+       * These properties force every pixel to be fully black or fully white.
+       */
+      -webkit-font-smoothing: none;
+      font-smooth: never;
     }
 
     html {
       /* Must match @page width so the browser doesn't apply fit-to-page scaling */
       width: 101.6mm;
-      font-size: 8pt;        /* base: 1rem = 8pt ≈ 2.8mm */
+      font-size: 9.5pt;      /* base size — bumped up for clear readability */
     }
 
     body {
       width: 101.6mm;
       background: #fff;
       font-family: 'Courier New', Courier, monospace;
-      font-size: 8pt;
-      line-height: 1.4;
+      font-size: 9.5pt;
+      /*
+       * Minimum weight 600 (semi-bold) for thermal printing.
+       * Regular weight (400) has strokes too thin — the thermal head
+       * can't fully heat the paper along fine edges → faint output.
+       * 600 gives clearly visible strokes without looking artificially bold.
+       */
+      font-weight: 600;
+      line-height: 1.45;
       color: #000;
     }
 
@@ -198,13 +213,13 @@ function buildReceiptHTML(
     }
 
     .store-name {
-      font-size: 10pt;
-      font-weight: 700;
+      font-size: 13pt;
+      font-weight: 800;
       letter-spacing: 0.2mm;
     }
 
-    .store-sub  { font-size: 7pt; }
-    .store-addr { font-size: 7pt; color: #333; }
+    .store-sub  { font-size: 8.5pt; font-weight: 600; }
+    .store-addr { font-size: 8pt;   font-weight: 600; color: #111; }
 
     /* ── Dividers ── */
     .dash {
@@ -224,13 +239,13 @@ function buildReceiptHTML(
       justify-content: space-between;
       align-items: baseline;
       gap: 1mm;
-      margin-bottom: 0.4mm;
-      font-size: 8pt;
+      margin-bottom: 0.6mm;
+      font-size: 9.5pt;
     }
 
     .total-row {
-      font-size: 10pt;
-      font-weight: 700;
+      font-size: 12pt;
+      font-weight: 900;
     }
 
     /* ── Items ── */
@@ -239,20 +254,21 @@ function buildReceiptHTML(
     }
 
     .item-name {
-      font-weight: 700;
-      font-size: 8pt;
+      font-weight: 800;
+      font-size: 9.5pt;
       word-break: break-word;
       white-space: normal;
     }
 
     .warranty {
-      font-size: 6.5pt;
+      font-size: 8pt;
+      font-weight: 600;
       padding-left: 3mm;
     }
 
     .item-price {
       padding-left: 3mm;
-      font-size: 8pt;
+      font-size: 9.5pt;
     }
 
     /* ── Footer ── */
@@ -260,15 +276,15 @@ function buildReceiptHTML(
 
     .qr {
       display: block;
-      width: 18mm;
-      height: 18mm;
+      width: 22mm;
+      height: 22mm;
       object-fit: contain;
-      margin: 1mm auto;
+      margin: 1.5mm auto;
     }
 
-    .thank  { font-size: 7pt;  margin-top: 1mm; }
-    .google { font-size: 7pt;  font-weight: 700; margin-bottom: 0.5mm; }
-    .power  { font-size: 6pt;  color: #555; margin-top: 1mm; }
+    .thank  { font-size: 8.5pt; font-weight: 600; margin-top: 1.5mm; }
+    .google { font-size: 8.5pt; font-weight: 800; margin-bottom: 0.8mm; }
+    .power  { font-size: 6pt;   font-weight: 600; color: #333; margin-top: 1mm; }
   </style>
 </head>
 <body>
