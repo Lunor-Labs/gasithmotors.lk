@@ -258,7 +258,7 @@ export function Customers() {
           type: item.warranty_type || undefined
         } : undefined,
       })),
-      subtotal: selectedSaleDetail.subtotal,
+      subtotal: selectedSaleDetail.subtotal + (selectedSaleDetail.discount_amount || 0),
       discount: selectedSaleDetail.discount_amount,
       tax: selectedSaleDetail.tax_amount,
       total: selectedSaleDetail.total_amount,
