@@ -59,7 +59,7 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
         salesService.getPendingReturnsCount(),
         salesService.getRecentSales(5),
         salesService.getSalesHistoryWithCost(days),
-        salesService.getTopSellingItems(5)
+        salesService.getTopSellingItems(20)
       ]);
 
       const lowStockList = allProducts.filter(product => {
@@ -360,7 +360,7 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
               </div>
             )}
           </div>
-          <div className="space-y-3 mt-6">
+          <div className="space-y-3 mt-6 max-h-[240px] overflow-y-auto custom-scrollbar pr-2">
             {topSellingItems.map((item) => (
               <div key={item.name} className="flex items-center gap-3 group">
                 <div
@@ -383,7 +383,7 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
               </div>
             ))}
             {topSellingItems.length === 0 && (
-              <p className="text-center text-slate-500 py-4 text-sm">No sales data for this month</p>
+              <p className="text-center text-slate-500 py-4 text-sm">No sales data available</p>
             )}
           </div>
         </div>

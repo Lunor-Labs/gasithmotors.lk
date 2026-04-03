@@ -504,15 +504,20 @@ export class SalesService {
     /**
      * Get top selling items
      */
-    async getTopSellingItems(limit: number = 5) {
+    async getTopSellingItems(limit: number = 5, period: 'month' | 'all' = 'all') {
         try {
-            const date = new Date();
-            const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
-
             const adapter = (this.saleRepo as any).adapter;
+            
+            let whereClause: any[] | undefined = undefined;
+            if (period === 'month') {
+                const date = new Date();
+                const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
+                whereClause = [{ field: 'created_at', operator: '>=', value: firstDayOfMonth }];
+            }
+
             const items = await adapter.query('sale_items', {
                 select: 'quantity, products(name)',
-                where: [{ field: 'created_at', operator: '>=', value: firstDayOfMonth }]
+                where: whereClause
             });
 
             // Aggregate items
