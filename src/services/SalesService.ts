@@ -451,6 +451,57 @@ export class SalesService {
     }
 
     /**
+     * Get sales history with cost (COGS) for revenue vs expense chart.
+     * Returns daily grouped data with both revenue and cost totals.
+     */
+    async getSalesHistoryWithCost(days: number = 30): Promise<{ date: string; revenue: number; cost: number }[]> {
+        try {
+            const adapter = (this.saleRepo as any).adapter;
+            const since = new Date();
+            since.setDate(since.getDate() - days);
+            const sinceStr = since.toISOString();
+
+            // Fetch sales for revenue
+            const sales: any[] = await adapter.query('sales', {
+                select: 'created_at, total_amount',
+                where: [{ field: 'created_at', operator: '>=', value: sinceStr }],
+                orderBy: [{ field: 'created_at', direction: 'asc' }],
+            });
+
+            // Fetch sale items for COGS
+            const items: any[] = await adapter.query('sale_items', {
+                select: 'created_at, cost_price, quantity',
+                where: [{ field: 'created_at', operator: '>=', value: sinceStr }],
+            });
+
+            // Group revenue by date
+            const revenueMap = new Map<string, number>();
+            for (const s of sales) {
+                const day = new Date(s.created_at).toISOString().split('T')[0];
+                revenueMap.set(day, (revenueMap.get(day) || 0) + Number(s.total_amount));
+            }
+
+            // Group cost by date
+            const costMap = new Map<string, number>();
+            for (const item of items) {
+                const day = new Date(item.created_at).toISOString().split('T')[0];
+                costMap.set(day, (costMap.get(day) || 0) + Number(item.cost_price) * Number(item.quantity));
+            }
+
+            // Merge into sorted daily array
+            const allDays = Array.from(new Set([...revenueMap.keys(), ...costMap.keys()])).sort();
+            return allDays.map(day => ({
+                date: day,
+                revenue: revenueMap.get(day) || 0,
+                cost: costMap.get(day) || 0,
+            }));
+        } catch (error) {
+            logger.error('Failed to fetch sales history with cost', error as Error);
+            throw new Error('Unable to fetch chart data');
+        }
+    }
+
+    /**
      * Get top selling items
      */
     async getTopSellingItems(limit: number = 5) {

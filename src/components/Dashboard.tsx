@@ -30,7 +30,8 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
     pendingReturns: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [salesData, setSalesData] = useState<any[]>([]);
+  const [salesData, setSalesData] = useState<{ name: string; revenue: number; cost: number }[]>([]);
+  const [chartPeriod, setChartPeriod] = useState<'30' | '7'>('30');
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [outOfStockItems, setOutOfStockItems] = useState<any[]>([]);
@@ -38,10 +39,10 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
   const [topSellingItems, setTopSellingItems] = useState<any[]>([]);
 
   useEffect(() => {
-    loadDashboardStats();
-  }, []);
+    loadDashboardStats(Number(chartPeriod));
+  }, [chartPeriod]);
 
-  async function loadDashboardStats() {
+  async function loadDashboardStats(days = 30) {
     try {
       const [
         allProducts,
@@ -49,7 +50,7 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
         todaySales,
         pendingReturnsCount,
         recentSalesData,
-        salesHistory,
+        salesHistoryWithCost,
         topSellingData
       ] = await Promise.all([
         productService.getAllProducts(),
@@ -57,7 +58,7 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
         salesService.getTodaySales(),
         salesService.getPendingReturnsCount(),
         salesService.getRecentSales(5),
-        salesService.getSalesHistory(50),
+        salesService.getSalesHistoryWithCost(days),
         salesService.getTopSellingItems(5)
       ]);
 
@@ -69,10 +70,11 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
         return product.total_stock === 0;
       });
 
-      // Process chart data
-      const chartData = (salesHistory as any[] || []).map(sale => ({
-        name: new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        value: Number(sale.total_amount)
+      // Process chart data — already grouped by day from service
+      const chartData = (salesHistoryWithCost || []).map(day => ({
+        name: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        revenue: Math.round(day.revenue),
+        cost: Math.round(day.cost),
       }));
 
       // Top selling items are already processed by the service
@@ -257,30 +259,54 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Revenue Chart */}
+        {/* Revenue vs Expense Chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Revenue vs Expense</h3>
-            <select className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none focus:border-blue-500 transition-colors">
-              <option>This Year</option>
-              <option>This Month</option>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Revenue vs Expense</h3>
+              <div className="flex items-center gap-4 mt-1">
+                <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span className="inline-block w-3 h-1 rounded-full bg-emerald-500"></span>Revenue
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span className="inline-block w-3 h-1 rounded-full bg-orange-400"></span>Cost (COGS)
+                </span>
+              </div>
+            </div>
+            <select
+              value={chartPeriod}
+              onChange={e => setChartPeriod(e.target.value as '30' | '7')}
+              className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none focus:border-blue-500 transition-colors"
+            >
+              <option value="30">Last 30 Days</option>
+              <option value="7">Last 7 Days</option>
             </select>
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={salesData.length > 0 ? salesData : [{ name: 'No Data', value: 0 }]}>
+              <AreaChart data={salesData.length > 0 ? salesData : [{ name: 'No Data', revenue: 0, cost: 0 }]}>
                 <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.1} />
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.15} />
                     <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#F97316" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={70}
+                  tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
-                  contentStyle={{ border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  contentStyle={{ border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
+                  formatter={(value: any, name: string | undefined) => [
+                    `LKR ${Number(value).toLocaleString()}`,
+                    name === 'revenue' ? 'Revenue' : 'Cost (COGS)',
+                  ]}
                 />
-                <Area type="monotone" dataKey="value" stroke="#10B981" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                <Area type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area type="monotone" dataKey="cost" stroke="#F97316" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCost)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -310,7 +336,21 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  formatter={(value: any, _name: any, props: any) => [
+                    `${value} units`,
+                    props.payload?.name,
+                  ]}
+                  contentStyle={{
+                    border: 'none',
+                    borderRadius: '10px',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.12)',
+                    fontSize: '12px',
+                    maxWidth: '200px',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
             {topSellingItems.length > 0 && (
@@ -322,12 +362,24 @@ export function Dashboard({ onNavigate, onFilterNavigate }: DashboardProps) {
           </div>
           <div className="space-y-3 mt-6">
             {topSellingItems.map((item) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-sm text-slate-600 truncate max-w-[150px]">{item.name}</span>
-                </div>
-                <span className="text-sm font-bold text-slate-900">{item.value}</span>
+              <div key={item.name} className="flex items-center gap-3 group">
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span
+                  className="text-sm text-slate-600 flex-1 min-w-0 leading-snug"
+                  title={item.name}
+                  style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {item.name}
+                </span>
+                <span className="text-sm font-bold text-slate-900 flex-shrink-0 ml-auto pl-2">{item.value}</span>
               </div>
             ))}
             {topSellingItems.length === 0 && (
