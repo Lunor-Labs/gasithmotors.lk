@@ -167,23 +167,25 @@ export function SalesHistory() {
                 onChange={setSearchTerm}
                 placeholder="Search by receipt number or customer..."
             >
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-500 font-medium">From:</span>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-3 w-full md:w-auto">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                        <span className="text-sm text-slate-500 font-medium whitespace-nowrap">From:</span>
                         <input
                             type="date"
                             value={dateRange.start}
                             onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 outline-none"
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 outline-none flex-1 sm:flex-none"
+                            title="Select start date"
                         />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-500 font-medium">To:</span>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                        <span className="text-sm text-slate-500 font-medium whitespace-nowrap">To:</span>
                         <input
                             type="date"
                             value={dateRange.end}
                             onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 outline-none"
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 outline-none flex-1 sm:flex-none"
+                            title="Select end date"
                         />
                     </div>
                 </div>
@@ -197,7 +199,59 @@ export function SalesHistory() {
                 />
             ) : (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="overflow-x-auto">
+                    {/* Mobile Card Layout */}
+                    <div className="block md:hidden">
+                        {filteredSales.map((sale) => (
+                            <div key={sale.id} className="border-b border-slate-200 last:border-b-0 p-4 space-y-3 hover:bg-slate-50 transition">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <p className="font-mono font-medium text-slate-900">{sale.sale_number}</p>
+                                        <p className="text-xs text-slate-500">
+                                            {new Date(sale.sale_date).toLocaleDateString()} {new Date(sale.sale_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-bold text-slate-900">LKR {sale.total_amount.toFixed(2)}</p>
+                                        <span className="capitalize text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full inline-block mt-1">
+                                            {sale.payment_method || 'Unknown'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="space-y-1 text-sm">
+                                    <p><span className="text-slate-600">Customer:</span> <span className="font-medium text-slate-900">{sale.customer?.name || 'Walk-in'}</span></p>
+                                    <p><span className="text-slate-600">Cashier:</span> <span className="text-slate-900">{sale.cashier?.full_name || 'System'}</span></p>
+                                </div>
+                                <div className="flex gap-2 pt-2">
+                                    <button
+                                        onClick={() => openSaleDetails(sale)}
+                                        className="flex-1 py-2 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition flex items-center justify-center gap-2 text-xs font-medium"
+                                        title="View Details"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                        View
+                                    </button>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => handleDeleteClick(sale.id)}
+                                            disabled={deletingId === sale.id}
+                                            className="flex-1 py-2 px-3 border border-red-300 bg-white text-red-600 rounded-lg hover:bg-red-50 transition flex items-center justify-center gap-2 text-xs font-medium disabled:opacity-50"
+                                            title="Delete Sale"
+                                        >
+                                            {deletingId === sale.id ? (
+                                                <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Trash2 className="w-4 h-4" />
+                                            )}
+                                            {!deletingId && 'Delete'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop Table Layout */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
@@ -277,30 +331,70 @@ export function SalesHistory() {
                 size="4xl"
             >
                 {selectedSale && (
-                    <div className="p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-left">
-                            <div className="bg-slate-50 p-4 rounded-lg">
+                    <div className="p-4 md:p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mb-6 md:mb-8 text-left">
+                            <div className="bg-slate-50 p-3 md:p-4 rounded-lg">
                                 <p className="text-xs font-semibold text-slate-500 uppercase">Customer</p>
-                                <p className="text-lg font-medium text-slate-900 mt-1">
+                                <p className="text-base md:text-lg font-medium text-slate-900 mt-1">
                                     {selectedSale.customer?.name || 'Walk-in Customer'}
                                 </p>
                             </div>
-                            <div className="bg-slate-50 p-4 rounded-lg">
+                            <div className="bg-slate-50 p-3 md:p-4 rounded-lg">
                                 <p className="text-xs font-semibold text-slate-500 uppercase">Payment Method</p>
-                                <p className="text-lg font-medium text-slate-900 mt-1 capitalize">
+                                <p className="text-base md:text-lg font-medium text-slate-900 mt-1 capitalize">
                                     {selectedSale.payment_method}
                                 </p>
                             </div>
-                            <div className="bg-slate-50 p-4 rounded-lg">
+                            <div className="bg-slate-50 p-3 md:p-4 rounded-lg">
                                 <p className="text-xs font-semibold text-slate-500 uppercase">Cashier</p>
-                                <p className="text-lg font-medium text-slate-900 mt-1">
+                                <p className="text-base md:text-lg font-medium text-slate-900 mt-1">
                                     {selectedSale.cashier?.full_name || 'System'}
                                 </p>
                             </div>
                         </div>
 
                         <h4 className="font-bold text-slate-900 mb-4 text-left">Ordered Items</h4>
-                        <div className="border border-slate-200 rounded-lg overflow-hidden mb-6">
+                        
+                        {/* Mobile Card Layout */}
+                        <div className="md:hidden space-y-3 mb-6">
+                            {loadingItems ? (
+                                <div className="text-center text-slate-500 py-8">Loading items...</div>
+                            ) : (
+                                <>
+                                    {saleItems.map((item) => (
+                                        <div key={item.id} className="border border-slate-200 rounded-lg p-4 bg-white hover:bg-slate-50 transition">
+                                            <div className="mb-3">
+                                                <p className="font-medium text-slate-900 text-sm">{item.product?.name || 'Unknown Item'}</p>
+                                                <p className="text-xs text-slate-500 font-mono mt-1">SKU: {item.product?.sku}</p>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2 rounded text-xs">
+                                                <div className="text-center">
+                                                    <p className="text-slate-500 font-medium">Unit Price</p>
+                                                    <p className="font-semibold text-slate-900">LKR {item.unit_price.toFixed(2)}</p>
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-slate-500 font-medium">Qty</p>
+                                                    <p className="font-semibold text-slate-900">{item.quantity}</p>
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-slate-500 font-medium">Total</p>
+                                                    <p className="font-semibold text-slate-900">LKR {item.subtotal.toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div className="border-t-2 border-slate-200 pt-3 mt-4">
+                                        <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
+                                            <span className="font-bold text-slate-900">Total Amount:</span>
+                                            <span className="font-bold text-lg text-slate-900">LKR {selectedSale.total_amount.toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Desktop Table Layout */}
+                        <div className="hidden md:block border border-slate-200 rounded-lg overflow-hidden mb-6">
                             <table className="w-full">
                                 <thead className="bg-slate-50 border-b border-slate-200">
                                     <tr>
@@ -328,13 +422,13 @@ export function SalesHistory() {
                                                     {item.product?.sku}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-slate-600 text-right">
-                                                    {item.unit_price.toFixed(2)}
+                                                    LKR {item.unit_price.toFixed(2)}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-slate-900 text-right">
                                                     {item.quantity}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm font-medium text-slate-900 text-right">
-                                                    {item.subtotal.toFixed(2)}
+                                                    LKR {item.subtotal.toFixed(2)}
                                                 </td>
                                             </tr>
                                         ))
@@ -349,10 +443,10 @@ export function SalesHistory() {
                             </table>
                         </div>
 
-                        <div className="flex justify-between mt-6">
+                        <div className="flex flex-col md:flex-row justify-between gap-3 md:gap-4 mt-6">
                             <button
                                 onClick={handleGenerateInvoice}
-                                className="px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition flex items-center gap-2 font-medium"
+                                className="px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition flex items-center justify-center gap-2 font-medium text-sm md:flex-1 md:flex-none"
                                 disabled={loadingItems}
                             >
                                 <FileText className="w-4 h-4" />
@@ -360,7 +454,7 @@ export function SalesHistory() {
                             </button>
                             <button
                                 onClick={() => setShowModal(false)}
-                                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium"
+                                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium text-sm md:flex-1 md:flex-none"
                             >
                                 Close Details
                             </button>

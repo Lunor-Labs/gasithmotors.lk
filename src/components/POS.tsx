@@ -96,6 +96,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [barcodeBuffer, setBarcodeBuffer] = useState('');
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastKeyTimeRef = useRef<number>(0);
 
@@ -649,7 +650,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
         <div className="lg:col-span-2">
           {/* Search & Filter Bar */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-            <div className="flex gap-4">
+            <div className="flex flex-col md:flex-row md:gap-4 gap-3">
               <div className="flex-1 flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
                 <Search className="w-5 h-5 text-slate-400" />
                 <input
@@ -669,20 +670,21 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
                 <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'} `} />
               </div>
 
-              <div className="relative min-w-[140px]">
-                <select
-                  value={searchType}
-                  onChange={(e) => setSearchType(e.target.value as SearchType)}
-                  className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
-                >
-                  <option value="all">Auto Search</option>
-                  <option value="name">Product Name</option>
-                  <option value="sku">SKU Code</option>
-                  <option value="barcode">Barcode</option>
-                </select>
-              </div>
+              <div className="flex md:flex-row flex-col gap-3 md:gap-0 md:items-center">
+                <div className="relative flex-1 md:flex-none md:min-w-[140px]">
+                  <select
+                    value={searchType}
+                    onChange={(e) => setSearchType(e.target.value as SearchType)}
+                    className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  >
+                    <option value="all">Auto Search</option>
+                    <option value="name">Product Name</option>
+                    <option value="sku">SKU Code</option>
+                    <option value="barcode">Barcode</option>
+                  </select>
+                </div>
 
-              <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
                 <button
                   onClick={() => setViewMode('grid')}
                   className={`p-1.5 rounded-md transition ${viewMode === 'grid'
@@ -703,6 +705,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
                 >
                   <List className="w-5 h-5" />
                 </button>
+              </div>
               </div>
             </div>
             {barcodeBuffer && (
@@ -752,8 +755,8 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
           </div>
         </div>
 
-        {/* Sidebar: Cart & Customer */}
-        <div className="lg:col-span-1">
+        {/* Sidebar: Cart & Customer - Hidden on mobile */}
+        <div className="hidden lg:block lg:col-span-1">
           <div className="bg-slate-50/50 backdrop-blur-sm rounded-2xl border border-slate-200 p-5 sticky top-6 space-y-5">
             <h3 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3">Sale Details</h3>
 
@@ -969,6 +972,252 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
           </div>
         </div>
       </div>
+
+      {/* Mobile Cart Drawer - Visible only on mobile when toggled */}
+      {cartDrawerOpen && (
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40 flex items-end" onClick={() => setCartDrawerOpen(false)}>
+          <div className="bg-white w-full rounded-t-3xl border-t border-slate-200 flex flex-col max-h-[90vh] sm:max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            {/* Fixed Header */}
+            <div className="px-4 sm:px-6 pt-4 pb-3 flex justify-between items-center border-b border-slate-200 flex-shrink-0">
+              <h3 className="text-xl font-bold text-slate-900">Sale Details</h3>
+              <button onClick={() => setCartDrawerOpen(false)} className="p-2 hover:bg-slate-100 rounded-lg transition" title="Close">
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6">
+              {/* Customer & Agent Group */}
+              <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Client Info</h4>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Customer (Optional)</label>
+                  <div className="flex gap-2 items-stretch">
+                    <select
+                      value={selectedCustomer?.id || ''}
+                      onChange={(e) => {
+                        const customer = customers.find((c) => c.id === e.target.value);
+                        setSelectedCustomer(customer || null);
+                      }}
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                      title="Select customer"
+                    >
+                      <option value="">Walk-in Customer</option>
+                      {customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerModal(true)}
+                      className="flex-shrink-0 p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition"
+                      title="Add new customer"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Referral Agent (Optional)</label>
+                  <div className="flex gap-2 items-stretch">
+                    <select
+                      value={selectedReferralAgent?.id || ''}
+                      onChange={(e) => {
+                        const agent = referralAgents.find((a) => a.id === e.target.value);
+                        setSelectedReferralAgent(agent || null);
+                      }}
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                      title="Select referral agent"
+                    >
+                      <option value="">None</option>
+                      {referralAgents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.commission_rate}%)
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgentModal(true)}
+                      className="flex-shrink-0 p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition"
+                      title="Add new referral agent"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment & Charges Group */}
+              <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Payment & Charges</h4>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Payment Method</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as any)}
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm transition appearance-none bg-white hover:border-slate-400"
+                      title="Select payment method"
+                    >
+                      <option value="cash">Cash Payment</option>
+                      <option value="card">Card Payment</option>
+                      <option value="credit">Credit Sale</option>
+                      <option value="mixed">Mixed Payment</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Tax Rate (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={taxRate === 0 ? '' : taxRate}
+                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      max="100"
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-white"
+                      placeholder="0"
+                      title="Enter tax rate"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Service Charge</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={serviceCharge === 0 ? '' : serviceCharge}
+                      onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-white"
+                      placeholder="0.00"
+                      title="Enter service charge"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">
+                      {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paidAmount === 0 ? '' : paidAmount}
+                      onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-base sm:text-lg font-bold bg-white"
+                      placeholder="0.00"
+                      title="Enter paid amount"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Summary Card */}
+              <div className="bg-slate-900 text-white p-5 rounded-xl shadow-lg space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <DollarSign className="w-16 h-16" />
+                </div>
+
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Subtotal:</span>
+                  <span>LKR {grossSubtotal.toFixed(2)}</span>
+                </div>
+
+                {itemLevelDiscount > 0 && (
+                  <div className="flex justify-between text-xs text-orange-400">
+                    <span>Discount:</span>
+                    <span>-LKR {itemLevelDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {(taxRate > 0 || serviceCharge > 0) && (
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Taxes & Charges:</span>
+                    <span>LKR {(taxAmount + serviceCharge).toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-end pt-2 border-t border-slate-800 mt-2">
+                  <span className="text-sm font-medium text-slate-400">Payable Total</span>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-white leading-none">
+                      LKR {total.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {changeAmount > 0 && paymentMethod === 'cash' && (
+                <div className="p-4 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                  <span className="text-xs font-semibold text-green-600 uppercase tracking-wider">Change Due</span>
+                  <span className="text-xl font-bold text-green-700 leading-none">LKR {changeAmount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Cart Section */}
+              <div className="border-t border-slate-200 pt-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
+                  {cart.length > 0 && (
+                    <button
+                      onClick={clearCart}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                      title="Clear all items from cart"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+                <div className="-mx-4 sm:-mx-6 px-4 sm:px-6">
+                  <CartItemsList
+                    items={cart}
+                    onUpdateQuantity={updateCartItemQuantity}
+                    onUpdatePrice={updateCartItemPrice}
+                    onUpdateWarranty={updateCartItemWarranty}
+                    onRemoveItem={removeFromCart}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Fixed Footer - Sticky Checkout Button */}
+            <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-white/95 pt-3 px-4 sm:px-6 pb-4 sm:pb-6 border-t border-slate-200 flex-shrink-0 space-y-2">
+              <button
+                onClick={handleCompleteSale}
+                disabled={cart.length === 0 || processing}
+                className="w-full py-3.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-base min-h-[48px] shadow-lg"
+                title={cart.length === 0 ? 'Add items to cart first' : 'Complete the sale'}
+              >
+                {processing ? 'Processing...' : 'Complete Sale'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Cart Toggle Button */}
+      {!cartDrawerOpen && (
+        <button
+          onClick={() => setCartDrawerOpen(true)}
+          className="lg:hidden fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-full shadow-lg flex items-center gap-2 hover:bg-slate-800 transition z-30 min-h-[48px] min-w-[48px]"
+          title="Show cart"
+        >
+          <DollarSign className="w-6 h-6" />
+          <span className="font-bold text-lg">{cart.length}</span>
+        </button>
+      )}
 
       {/* Modals & Invoice */}
       {showInvoice && invoiceData && (

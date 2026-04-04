@@ -117,24 +117,24 @@ export function Reports() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <div className="flex items-center gap-4">
-          <Calendar className="w-5 h-5 text-slate-400" />
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-700">From:</label>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <Calendar className="w-5 h-5 text-slate-400 hidden sm:block" />
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            <label className="text-sm font-medium text-slate-700 whitespace-nowrap">From:</label>
             <input
               type="date"
               value={dateRange.start}
               onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none flex-1 sm:flex-none"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-700">To:</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            <label className="text-sm font-medium text-slate-700 whitespace-nowrap">To:</label>
             <input
               type="date"
               value={dateRange.end}
               onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none flex-1 sm:flex-none"
             />
           </div>
         </div>
@@ -206,7 +206,32 @@ export function Reports() {
             No commission data for the selected period
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile Card Layout */}
+            <div className="block md:hidden">
+              {commissionReports.map((report) => (
+                <div key={report.agent_id} className="border-b border-slate-200 last:border-b-0 p-4 space-y-2">
+                  <h4 className="font-semibold text-slate-900 text-base">{report.agent_name}</h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-slate-600 font-medium">Total Sales</p>
+                      <p className="font-medium text-slate-900">LKR {report.total_sales.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-600 font-medium">Commission</p>
+                      <p className="font-medium text-slate-900">LKR {report.total_commission.toFixed(2)}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-slate-600 font-medium">Pending Commission</p>
+                      <p className="font-medium text-orange-600">LKR {report.pending_commission.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -243,7 +268,9 @@ export function Reports() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+
+          </>
         )}
       </div>
     </div>
