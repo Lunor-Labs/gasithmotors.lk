@@ -71,11 +71,6 @@ export function InvoicePreview({ invoiceData, showDiscount }: Props) {
                     <div key={i} style={{ marginBottom: 6 }}>
                         <div style={{ fontWeight: 600, wordBreak: 'break-word', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span>{i + 1}. {item.name}</span>
-                            {item.isManual && (
-                                <span style={{ fontSize: 9, backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: 4, textTransform: 'uppercase' }}>
-                                    Manual
-                                </span>
-                            )}
                         </div>
                         {item.warranty && item.warranty.duration > 0 && (
                             <div style={{ fontSize: 10, paddingLeft: 12 }}>
