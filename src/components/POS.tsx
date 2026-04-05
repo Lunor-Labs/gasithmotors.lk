@@ -9,7 +9,8 @@ import {
   X,
   DollarSign,
   User,
-  CreditCard
+  CreditCard,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -100,6 +101,10 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
   const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastKeyTimeRef = useRef<number>(0);
 
+  // Manual Item Modal State
+  const [showManualItemModal, setShowManualItemModal] = useState(false);
+  const [manualItemForm, setManualItemForm] = useState({ description: '', price: 0, quantity: 1 });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -171,7 +176,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
       // Don't intercept scanner if POS is not the active page
       if (!isActive) return;
       // Don't intercept scanner if a major modal is open (except POS scan mode)
-      if (showCustomerModal || showAgentModal || showInvoice) return;
+      if (showCustomerModal || showAgentModal || showInvoice || showManualItemModal) return;
 
       const currentTime = Date.now();
       const diff = currentTime - lastKeyTimeRef.current;
@@ -221,7 +226,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
       window.removeEventListener('keydown', handleKeyDown);
       if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
     };
-  }, [barcodeBuffer, showBatchModal, showCustomerModal, showAgentModal, showInvoice, searchType]);
+  }, [barcodeBuffer, showBatchModal, showCustomerModal, showAgentModal, showInvoice, showManualItemModal, searchType]);
 
   async function loadData() {
     try {
@@ -335,13 +340,51 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
       return;
     }
 
-    if (newQuantity > newCart[index].batch.current_quantity) {
+    // Manual items have no stock limit
+    if (!newCart[index].isManual && newQuantity > newCart[index].batch.current_quantity) {
       showToast(`Only ${newCart[index].batch.current_quantity} units available`, 'warning');
       return;
     }
 
     newCart[index].quantity = newQuantity;
     setCart(newCart);
+  }
+
+  function addManualItem() {
+    const { description, price, quantity } = manualItemForm;
+    if (!description.trim()) {
+      showToast('Please enter a description', 'warning');
+      return;
+    }
+    if (price <= 0) {
+      showToast('Please enter a valid price', 'warning');
+      return;
+    }
+    if (quantity < 1) {
+      showToast('Quantity must be at least 1', 'warning');
+      return;
+    }
+
+    // Stub product & batch so CartItem shape is satisfied (these won't be saved to DB)
+    const stubProduct: any = { id: `manual-${Date.now()}`, name: description, image_url: null };
+    const stubBatch: any = { id: `manual-batch-${Date.now()}`, batch_number: 'MANUAL', selling_price: price, cost_price: 0, current_quantity: 999999 };
+
+    setCart([
+      ...cart,
+      {
+        product: stubProduct,
+        batch: stubBatch,
+        quantity,
+        price,
+        original_price: price,
+        isManual: true,
+        manualDescription: description.trim(),
+      },
+    ]);
+
+    setManualItemForm({ description: '', price: 0, quantity: 1 });
+    setShowManualItemModal(false);
+    showToast(`'${description.trim()}' added to cart`, 'success');
   }
 
   function updateCartItemPrice(index: number, newPrice: number) {
@@ -465,8 +508,8 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
         cashier_id: profile?.id || '',
         referral_agent_id: selectedReferralAgent?.id || null,
         items: cart.map((item) => ({
-          product_id: item.product.id,
-          batch_id: item.batch.id,
+          product_id: item.isManual ? undefined : item.product.id,
+          batch_id: item.isManual ? undefined : item.batch.id,
           quantity: item.quantity,
           unit_price: item.price,
           selling_price: item.original_price,
@@ -474,6 +517,8 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
           warranty_duration: item.warranty_duration,
           warranty_unit: item.warranty_unit,
           warranty_type: item.warranty_type,
+          is_manual: item.isManual || false,
+          manual_description: item.manualDescription,
         })),
         payment_method: paymentMethod,
         subtotal: effectiveSubtotal,
@@ -492,14 +537,15 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
         customerName: selectedCustomer?.name || 'Walk-in Customer',
         customerPhone: selectedCustomer?.phone,
         items: cart.map((item) => ({
-          name: item.product.name,
+          name: item.isManual ? (item.manualDescription || 'Manual Item') : item.product.name,
           quantity: item.quantity,
           unitPrice: item.original_price,
           discountedUnitPrice: item.price,
           subtotal: item.original_price * item.quantity,
           discountedSubtotal: item.price * item.quantity,
-          batchNumber: item.batch.batch_number,
-          warranty: item.warranty_duration ? {
+          batchNumber: item.isManual ? '' : item.batch.batch_number,
+          isManual: item.isManual,
+          warranty: (!item.isManual && item.warranty_duration) ? {
             duration: item.warranty_duration,
             unit: item.warranty_unit || 'months',
             type: item.warranty_type
@@ -542,8 +588,8 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
             status: paymentMethod === 'credit' ? (paidAmount > 0 ? 'partial' : 'credit') : 'completed',
           },
           items: cart.map((item) => ({
-            product_id: item.product.id,
-            batch_id: item.batch.id,
+            product_id: item.isManual ? undefined : item.product.id,
+            batch_id: item.isManual ? undefined : item.batch.id,
             quantity: item.quantity,
             unit_price: item.price,
             selling_price: item.original_price,
@@ -553,8 +599,10 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
             warranty_duration: item.warranty_duration,
             warranty_unit: item.warranty_unit,
             warranty_type: item.warranty_type,
+            is_manual: item.isManual || false,
+            manual_description: item.manualDescription,
           })),
-          batches: cart.map(item => ({
+          batches: cart.filter(i => !i.isManual).map(item => ({
             id: item.batch.id,
             newQuantity: item.batch.current_quantity - item.quantity
           })),
@@ -578,7 +626,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
         });
 
         // Optimization: Deduct stock from local IndexedDB immediately so offline search shows updated stock
-        for (const item of cart) {
+        for (const item of cart.filter(i => !i.isManual)) {
           const product = await db.products.get(item.product.id);
           if (product) {
             const updatedBatches = product.batches.map(b =>
@@ -595,14 +643,15 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
           customerName: selectedCustomer?.name,
           customerPhone: selectedCustomer?.phone,
           items: cart.map(item => ({
-            name: item.product.name,
+            name: item.isManual ? (item.manualDescription || 'Manual Item') : item.product.name,
             quantity: item.quantity,
             unitPrice: item.original_price,
             discountedUnitPrice: item.price,
             subtotal: item.original_price * item.quantity,
             discountedSubtotal: item.price * item.quantity,
-            batchNumber: item.batch.batch_number,
-            warranty: item.warranty_duration ? {
+            batchNumber: item.isManual ? '' : item.batch.batch_number,
+            isManual: item.isManual,
+            warranty: (!item.isManual && item.warranty_duration) ? {
               duration: item.warranty_duration,
               unit: item.warranty_unit || 'months',
               type: item.warranty_type
@@ -685,27 +734,27 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
                 </div>
 
                 <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-md transition ${viewMode === 'grid'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                    } `}
-                  title="Grid View"
-                >
-                  <LayoutGrid className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-md transition ${viewMode === 'list'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                    } `}
-                  title="List View"
-                >
-                  <List className="w-5 h-5" />
-                </button>
-              </div>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded-md transition ${viewMode === 'grid'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                      } `}
+                    title="Grid View"
+                  >
+                    <LayoutGrid className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-1.5 rounded-md transition ${viewMode === 'list'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                      } `}
+                    title="List View"
+                  >
+                    <List className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             </div>
             {barcodeBuffer && (
@@ -938,17 +987,27 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
             </div>
 
             <div className="border-t border-slate-100 pt-6">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-3">
                 <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
                 {cart.length > 0 && (
                   <button
                     onClick={clearCart}
-                    className="text-xs text-red-600 hover:text-red-700"
+                    className="text-xs text-red-600 hover:text-red-700 font-medium"
                   >
                     Clear All
                   </button>
                 )}
               </div>
+
+              {/* Add Manual Item Button */}
+              <button
+                onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1 }); setShowManualItemModal(true); }}
+                className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition text-sm font-medium"
+              >
+                <Tag className="w-4 h-4" />
+                Add Manual Item
+              </button>
+
               <div className="-mx-2 px-2">
                 <CartItemsList
                   items={cart}
@@ -1168,7 +1227,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
 
               {/* Cart Section */}
               <div className="border-t border-slate-200 pt-5">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-3">
                   <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
                   {cart.length > 0 && (
                     <button
@@ -1180,6 +1239,16 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
                     </button>
                   )}
                 </div>
+
+                {/* Add Manual Item Button */}
+                <button
+                  onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1 }); setShowManualItemModal(true); }}
+                  className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition text-sm font-medium"
+                >
+                  <Tag className="w-4 h-4" />
+                  Add Manual Item
+                </button>
+
                 <div className="-mx-4 sm:-mx-6 px-4 sm:px-6">
                   <CartItemsList
                     items={cart}
@@ -1390,6 +1459,88 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
                 Save Agent
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Item Modal */}
+      {showManualItemModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <Tag className="w-4 h-4 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Add Manual Item</h3>
+              </div>
+              <button
+                onClick={() => setShowManualItemModal(false)}
+                className="p-1 hover:bg-slate-100 rounded-md transition"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description *</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="e.g. Bus Fare, Repair Charge, Delivery"
+                  value={manualItemForm.description}
+                  onChange={(e) => setManualItemForm({ ...manualItemForm, description: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Unit Price (LKR) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={manualItemForm.price === 0 ? '' : manualItemForm.price}
+                    onChange={(e) => setManualItemForm({ ...manualItemForm, price: parseFloat(e.target.value) || 0 })}
+                    onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={manualItemForm.quantity}
+                    onChange={(e) => setManualItemForm({ ...manualItemForm, quantity: parseInt(e.target.value) || 1 })}
+                    onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                  />
+                </div>
+              </div>
+              {manualItemForm.price > 0 && manualItemForm.quantity > 0 && (
+                <p className="text-sm text-slate-500">
+                  Total: <span className="font-bold text-slate-900">LKR {(manualItemForm.price * manualItemForm.quantity).toFixed(2)}</span>
+                </p>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={() => setShowManualItemModal(false)}
+                className="flex-1 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addManualItem}
+                className="flex-1 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium"
+              >
+                Add to Cart
+              </button>
+            </div>
           </div>
         </div>
       )}

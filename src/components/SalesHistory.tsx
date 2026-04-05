@@ -121,14 +121,15 @@ export function SalesHistory() {
             customerName: selectedSale.customer?.name || 'Walk-in Customer',
             customerPhone: selectedSale.customer?.phone || undefined,
             items: saleItems.map(item => ({
-                name: item.product?.name || 'Unknown Item',
+                name: item.is_manual ? (item.manual_description || 'Manual Item') : (item.product?.name || 'Unknown Item'),
                 quantity: item.quantity,
                 unitPrice: (item as any).selling_price || item.unit_price,
                 discountedUnitPrice: item.unit_price,
                 subtotal: ((item as any).selling_price || item.unit_price) * item.quantity,
                 discountedSubtotal: item.unit_price * item.quantity,
-                batchNumber: item.batch?.batch_number || '',
-                warranty: item.warranty_duration && item.warranty_duration > 0 ? {
+                batchNumber: item.is_manual ? '' : (item.batch?.batch_number || ''),
+                isManual: item.is_manual,
+                warranty: (!item.is_manual && item.warranty_duration && item.warranty_duration > 0) ? {
                     duration: item.warranty_duration,
                     unit: (item.warranty_unit as any) || 'months',
                     type: item.warranty_type || undefined
@@ -354,7 +355,7 @@ export function SalesHistory() {
                         </div>
 
                         <h4 className="font-bold text-slate-900 mb-4 text-left">Ordered Items</h4>
-                        
+
                         {/* Mobile Card Layout */}
                         <div className="md:hidden space-y-3 mb-6">
                             {loadingItems ? (
@@ -364,8 +365,15 @@ export function SalesHistory() {
                                     {saleItems.map((item) => (
                                         <div key={item.id} className="border border-slate-200 rounded-lg p-4 bg-white hover:bg-slate-50 transition">
                                             <div className="mb-3">
-                                                <p className="font-medium text-slate-900 text-sm">{item.product?.name || 'Unknown Item'}</p>
-                                                <p className="text-xs text-slate-500 font-mono mt-1">SKU: {item.product?.sku}</p>
+                                                <p className="font-medium text-slate-900 text-sm">
+                                                    {item.is_manual ? (
+                                                        <span className="flex items-center gap-1.5 flex-wrap">
+                                                            {item.manual_description || 'Manual Item'}
+                                                            <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Manual</span>
+                                                        </span>
+                                                    ) : (item.product?.name || 'Unknown Item')}
+                                                </p>
+                                                {!item.is_manual && <p className="text-xs text-slate-500 font-mono mt-1">SKU: {item.product?.sku}</p>}
                                             </div>
                                             <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2 rounded text-xs">
                                                 <div className="text-center">
@@ -416,10 +424,15 @@ export function SalesHistory() {
                                         saleItems.map((item) => (
                                             <tr key={item.id}>
                                                 <td className="px-4 py-3 text-sm text-slate-900 font-medium text-left">
-                                                    {item.product?.name || 'Unknown Item'}
+                                                    {item.is_manual ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            {item.manual_description || 'Manual Item'}
+                                                            <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Manual</span>
+                                                        </div>
+                                                    ) : (item.product?.name || 'Unknown Item')}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-slate-500 text-left">
-                                                    {item.product?.sku}
+                                                    {item.is_manual ? '-' : item.product?.sku}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-slate-600 text-right">
                                                     LKR {item.unit_price.toFixed(2)}
