@@ -10,8 +10,8 @@ export interface CreateSaleInput {
     cashier_id: string;
     referral_agent_id?: string | null;
     items: Array<{
-        product_id: string;
-        batch_id: string;
+        product_id?: string | null;
+        batch_id?: string | null;
         quantity: number;
         unit_price: number;
         selling_price: number;
@@ -19,6 +19,8 @@ export interface CreateSaleInput {
         warranty_duration?: number;
         warranty_unit?: 'days' | 'months' | 'years';
         warranty_type?: string;
+        is_manual?: boolean;
+        manual_description?: string;
     }>;
     payment_method: 'cash' | 'card' | 'credit' | 'mixed';
     subtotal: number;
@@ -92,8 +94,8 @@ export class SalesService {
 
             // Prepare sale items
             const saleItems: Partial<SaleItem>[] = input.items.map(item => ({
-                product_id: item.product_id,
-                batch_id: item.batch_id,
+                product_id: item.product_id || null,
+                batch_id: item.batch_id || null,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
                 selling_price: item.selling_price,
@@ -102,10 +104,20 @@ export class SalesService {
                 warranty_duration: item.warranty_duration || 0,
                 warranty_unit: item.warranty_unit || null,
                 warranty_type: item.warranty_type || null,
+                is_manual: item.is_manual || false,
+                manual_description: item.manual_description || null,
             }));
 
-            // Deduct stock levels
-            await this.inventoryRepo.deductStock(input.items);
+            // Only deduct stock for regular (non-manual) items
+            const stockItems = input.items.filter(i => !i.is_manual) as Array<{
+                product_id: string;
+                batch_id: string;
+                quantity: number;
+                unit_price: number;
+                selling_price: number;
+                cost_price: number;
+            }>;
+            await this.inventoryRepo.deductStock(stockItems);
 
             // Create sale with items
             const sale = await this.saleRepo.createWithItems(saleData, saleItems);
@@ -292,6 +304,14 @@ export class SalesService {
             if (item.unit_price < 0) {
                 throw new Error('Item price cannot be negative.');
             }
+            // Regular items must have product and batch references
+            if (!item.is_manual && (!item.product_id || !item.batch_id)) {
+                throw new Error('Regular items must have a product and batch.');
+            }
+            // Manual items must have a description
+            if (item.is_manual && !item.manual_description?.trim()) {
+                throw new Error('Manual items must have a description.');
+            }
         }
     }
 
@@ -356,8 +376,10 @@ export class SalesService {
                 throw new Error('Cannot delete a sale that has associated returns. Please handle returns first.');
             }
 
-            // 3. Restore stock levels
+            // 3. Restore stock levels (skip manual items which have no batch)
             for (const item of sale.items) {
+                if (item.is_manual || !item.batch_id) continue;
+
                 // Get current batch to know current quantity
                 const client = (this.productRepo as any).adapter.getClient();
                 const { data: batch, error } = await client

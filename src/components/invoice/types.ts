@@ -7,6 +7,7 @@ export interface InvoiceItem {
     subtotal: number;
     discountedSubtotal?: number;
     batchNumber: string;
+    isManual?: boolean;
     warranty?: {
         duration: number;
         unit: 'days' | 'months' | 'years';
