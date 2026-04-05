@@ -47,7 +47,6 @@ export function buildReceiptHTML(
         <div class="item">
           <div class="item-name">
             ${i + 1}. ${item.name}
-            ${item.isManual ? '<span style="font-size: 9px; border: 1px solid #000; padding: 1px 3px; border-radius: 3px; margin-left: 4px;">MANUAL</span>' : ''}
           </div>
           ${warrantyLine}
           <div class="row item-price">
