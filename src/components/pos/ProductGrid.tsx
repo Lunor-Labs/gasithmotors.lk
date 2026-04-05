@@ -25,7 +25,7 @@ export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: Produc
     <>
       <div className={viewMode === 'grid'
         ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
-        : "flex flex-col gap-2"
+        : "flex flex-col gap-3 md:gap-2"
       }>
         {products.map((product) => {
           const totalStock = product.batches.reduce((sum, b) => sum + b.current_quantity, 0);
@@ -37,10 +37,10 @@ export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: Produc
             return (
               <div
                 key={product.id}
-                className="flex items-center gap-4 p-3 bg-white border border-slate-200 rounded-lg hover:shadow-md transition group relative"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-slate-200 rounded-lg hover:shadow-md transition group relative"
               >
                 <div
-                  className="w-16 h-16 flex-shrink-0 relative cursor-zoom-in rounded-md group/image"
+                  className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 relative cursor-zoom-in rounded-md group/image"
                   onClick={() => product.image_url && setPreviewImage({ url: product.image_url, alt: product.name })}
                 >
                   <div className="w-full h-full overflow-hidden rounded-md">
@@ -67,23 +67,25 @@ export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: Produc
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-slate-900 truncate" title={product.name}>
+                  <h4 className="font-medium text-sm sm:text-base text-slate-900 truncate" title={product.name}>
                     {product.name}
                   </h4>
-                  <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
-                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">
-                      {product.sku}
-                    </span>
-                    {product.barcode && (
-                      <span className="flex items-center gap-1 text-xs">
-                        {product.barcode}
+                  <div className="flex flex-col gap-1 text-xs sm:text-sm text-slate-500 mt-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">
+                        {product.sku}
                       </span>
-                    )}
+                      {product.barcode && (
+                        <span className="text-xs text-slate-600">
+                          {product.barcode}
+                        </span>
+                      )}
+                    </div>
                     {isAdmin && product.batches.length > 0 && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-slate-400">Cost:</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-slate-400">Cost:</span>
                         <span className="text-xs font-semibold text-slate-700">LKR {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].cost_price.toFixed(2)}</span>
-                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1 rounded font-medium">
+                        <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
                           {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].markup_percentage}%
                         </span>
                       </div>
@@ -91,20 +93,20 @@ export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: Produc
                   </div>
                 </div>
 
-                <div className="text-right min-w-[100px]">
-                  <p className="font-bold text-slate-900">
-                    LKR {lowestPrice.toFixed(2)}
-                  </p>
-                  <p className={`text-xs ${totalStock === 0 ? 'text-red-500 font-medium' : 'text-slate-500'}`}>
-                    {totalStock === 0 ? 'Out of Stock' : `${totalStock} in stock`}
-                  </p>
-                </div>
+                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 sm:gap-1 sm:min-w-fit">
+                  <div className="text-right">
+                    <p className="font-bold text-base sm:text-lg text-slate-900">
+                      LKR {lowestPrice.toFixed(2)}
+                    </p>
+                    <p className={`text-xs ${totalStock === 0 ? 'text-red-500 font-medium' : 'text-slate-500'}`}>
+                      {totalStock === 0 ? 'Out of Stock' : `${totalStock} in stock`}
+                    </p>
+                  </div>
 
-                <div className="pl-2">
                   <button
                     onClick={() => onAddToCart(product)}
                     disabled={totalStock === 0}
-                    className={`p-2 rounded-lg transition ${totalStock === 0
+                    className={`p-2 sm:p-2.5 rounded-lg transition flex-shrink-0 ${totalStock === 0
                       ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                       : 'bg-slate-900 hover:bg-slate-800 text-white'
                       }`}
@@ -165,27 +167,32 @@ export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: Produc
                 </div>
               </div>
 
-              <div className="p-3">
-                <h4 className="font-medium text-slate-900 text-sm mb-1 truncate" title={product.name}>
+              <div className="p-3 sm:p-4 space-y-2">
+                <h4 className="font-medium text-slate-900 text-sm sm:text-base line-clamp-2" title={product.name}>
                   {product.name}
                 </h4>
-                <p className="text-xs text-slate-500 mb-1 truncate">
+                <p className="text-xs text-slate-500 font-mono">
                   SKU: {product.sku}
                 </p>
                 {isAdmin && product.batches.length > 0 && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-semibold text-slate-600">Cost: LKR {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].cost_price.toFixed(2)}</span>
-                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1 rounded font-bold">
-                      {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].markup_percentage}%
-                    </span>
+                  <div className="bg-slate-50 p-2 rounded space-y-1">
+                    <div className="flex justify-between items-baseline gap-1 text-xs">
+                      <span className="text-slate-600">Cost:</span>
+                      <span className="font-semibold text-slate-800">LKR {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].cost_price.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-end">
+                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">
+                        {[...product.batches].sort((a, b) => new Date(b.received_date).getTime() - new Date(a.received_date).getTime())[0].markup_percentage}%
+                      </span>
+                    </div>
                   </div>
                 )}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-slate-900">
+                <div className="border-t border-slate-100 pt-2">
+                  <p className="text-lg font-bold text-slate-900">
                     LKR {lowestPrice.toFixed(2)}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    Stock: {totalStock}
+                  <p className={`text-xs sm:text-sm font-medium ${totalStock === 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                    {totalStock === 0 ? 'Out of Stock' : `Stock: ${totalStock}`}
                   </p>
                 </div>
               </div>
@@ -204,6 +211,7 @@ export function ProductGrid({ products, onAddToCart, viewMode, isAdmin }: Produc
             <button
               onClick={() => setPreviewImage(null)}
               className="absolute -top-12 right-0 text-white hover:text-gray-300 transition"
+              title="Close preview"
             >
               <X className="w-8 h-8" />
             </button>
