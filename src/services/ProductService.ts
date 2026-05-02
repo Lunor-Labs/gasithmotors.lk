@@ -393,4 +393,21 @@ export class ProductService {
             throw error;
         }
     }
+
+    /**
+     * Update product batch
+     */
+    async updateBatch(batchId: string, updates: any): Promise<void> {
+        try {
+            const client = (this.productRepo as any).adapter.getClient();
+            const { error } = await client
+                .from('product_batches')
+                .update(updates)
+                .eq('id', batchId);
+            if (error) throw error;
+        } catch (error) {
+            logger.error('Failed to update batch', error as Error);
+            throw error;
+        }
+    }
 }
