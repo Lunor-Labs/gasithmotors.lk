@@ -1,6 +1,7 @@
 import { Plus, Minus, Trash2, Tag } from 'lucide-react';
 import { CartItem } from '../../types';
 import { ProductImage } from '../ProductImage';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface CartItemsListProps {
   items: CartItem[];
@@ -11,6 +12,8 @@ interface CartItemsListProps {
 }
 
 export function CartItemsList({ items, onUpdateQuantity, onUpdatePrice, onUpdateWarranty, onRemoveItem }: CartItemsListProps) {
+  const { isAdmin } = useAuth();
+
   if (items.length === 0) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -50,6 +53,11 @@ export function CartItemsList({ items, onUpdateQuantity, onUpdatePrice, onUpdate
                 {!item.isManual && (
                   <p className="text-xs text-slate-500">
                     Batch: {item.batch.batch_number} • LKR {item.batch.selling_price.toFixed(2)} each
+                  </p>
+                )}
+                {!item.isManual && isAdmin && (
+                  <p className="text-[11px] font-medium text-rose-600 mt-0.5">
+                    Cost: LKR {item.batch.cost_price.toFixed(2)} each
                   </p>
                 )}
               </div>
