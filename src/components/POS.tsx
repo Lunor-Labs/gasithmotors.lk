@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useCartPersistence } from '../hooks/useCartPersistence';
 import {
   Search,
   Plus,
@@ -6,21 +7,29 @@ import {
   List,
   Barcode,
   X,
+  DollarSign,
+  User,
+  CreditCard,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useProducts, SearchType } from '../hooks/useProducts';
-import { ProductWithBatches, Customer, ReferralAgent, CartItem } from '../types';
+import { ProductWithBatches, Customer, ReferralAgent } from '../types';
 import { Invoice } from './Invoice';
 import { ProductGrid } from './pos/ProductGrid';
 import { CartItemsList } from './pos/CartItemsList';
 
 import { db } from '../lib/db';
 import { SyncStatus } from './pos/SyncStatus';
+import { Pagination } from './ui';
 import { salesService, customerService, productService } from '../services'; // Import services
 import { logger } from '../lib/logger';
+import { playScannerBeep } from '../utils/audio';
 
-export function POS() {
+export function POS({ isActive = true }: { isActive?: boolean }) {
   const { profile } = useAuth();
+  const { showToast } = useToast();
 
   // Pagination & Search State
   const [page, setPage] = useState(1);
@@ -45,16 +54,28 @@ export function POS() {
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [referralAgents, setReferralAgents] = useState<ReferralAgent[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
 
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [selectedReferralAgent, setSelectedReferralAgent] = useState<ReferralAgent | null>(null);
+  // ── Persistent cart state (survives page navigation) ───────────────────────
+  const {
+    cart,
+    setCart,
+    selectedCustomer,
+    setSelectedCustomer,
+    selectedReferralAgent,
+    setSelectedReferralAgent,
+    paymentMethod,
+    setPaymentMethod,
+    paidAmount,
+    setPaidAmount,
+    serviceCharge,
+    setServiceCharge,
+    taxRate,
+    setTaxRate,
+    clearCart,
+  } = useCartPersistence(customers, referralAgents);
+
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductWithBatches | null>(null);
-  const [taxRate, setTaxRate] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'credit' | 'mixed'>('cash');
-  const [paidAmount, setPaidAmount] = useState(0);
-  const [serviceCharge, setServiceCharge] = useState(0);
   const [processing, setProcessing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -76,7 +97,13 @@ export function POS() {
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [barcodeBuffer, setBarcodeBuffer] = useState('');
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastKeyTimeRef = useRef<number>(0);
+
+  // Manual Item Modal State
+  const [showManualItemModal, setShowManualItemModal] = useState(false);
+  const [manualItemForm, setManualItemForm] = useState({ description: '', price: 0, quantity: 1 });
 
   useEffect(() => {
     loadData();
@@ -145,36 +172,61 @@ export function POS() {
   }, [refetchProducts]);
 
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (showBatchModal || showCustomerModal || showAgentModal || showInvoice) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept scanner if POS is not the active page
+      if (!isActive) return;
+      // Don't intercept scanner if a major modal is open (except POS scan mode)
+      if (showCustomerModal || showAgentModal || showInvoice || showManualItemModal) return;
 
-      if (e.key === 'Enter' && barcodeBuffer) {
-        searchProductByBarcode(barcodeBuffer);
+      const currentTime = Date.now();
+      const diff = currentTime - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = currentTime;
+
+      // Scanning logic: Scanners are much faster than manual typing (usually < 50ms)
+      const isFastInput = diff < 50;
+
+      // 1. If Enter is pressed, finalize the scan
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.length > 3) {
+          e.preventDefault();
+          searchProductByBarcode(barcodeBuffer);
+          setBarcodeBuffer('');
+          return;
+        }
+        // If it's a short buffer, maybe user just pressed enter, reset
         setBarcodeBuffer('');
         return;
       }
 
-      if (e.key.length === 1) {
-        setBarcodeBuffer((prev) => prev + e.key);
-
-        if (barcodeTimeoutRef.current) {
-          clearTimeout(barcodeTimeoutRef.current);
+      // 2. Capture alphanumeric characters
+      if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+        // High-speed detection OR first character of a potential sequence
+        if (barcodeBuffer === '' || isFastInput || diff < 100) {
+          setBarcodeBuffer((prev) => prev + e.key);
+        } else {
+          // Slow typing detected - reset to current key (human mode)
+          // But if we're in "Barcode Search Type", we might want to capture it anyway
+          if (searchType !== 'barcode') {
+            setBarcodeBuffer(e.key);
+          } else {
+            setBarcodeBuffer((prev) => prev + e.key);
+          }
         }
 
+        // Auto-clear buffer if no key for 500ms
+        if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
         barcodeTimeoutRef.current = setTimeout(() => {
           setBarcodeBuffer('');
-        }, 100);
+        }, 500);
       }
     };
 
-    window.addEventListener('keypress', handleKeyPress);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keypress', handleKeyPress);
-      if (barcodeTimeoutRef.current) {
-        clearTimeout(barcodeTimeoutRef.current);
-      }
+      window.removeEventListener('keydown', handleKeyDown);
+      if (barcodeTimeoutRef.current) clearTimeout(barcodeTimeoutRef.current);
     };
-  }, [barcodeBuffer, showBatchModal, showCustomerModal, showAgentModal, showInvoice]);
+  }, [barcodeBuffer, showBatchModal, showCustomerModal, showAgentModal, showInvoice, showManualItemModal, searchType]);
 
   async function loadData() {
     try {
@@ -194,15 +246,19 @@ export function POS() {
   // Hook handles refetching automatically
 
   async function searchProductByBarcode(barcode: string) {
-    // For barcode scan, we might need to search globally if it's not in the current page
-    // So we do a direct DB lookup for exact barcode match
+    if (!barcode) return;
+
     try {
+      setSearchTerm(''); // Clear search bar on scan
       const productData = await productService.findByBarcode(barcode);
 
       if (!productData) {
-        alert('Product not found with this barcode');
+        showToast(`Product not found with barcode: ${barcode}`, 'error');
         return;
       }
+
+      playScannerBeep();
+      showToast(`Scanned: ${productData.name}`, 'success');
 
       // Fetch batches for this product
       const batches = await productService.getProductBatches(productData.id);
@@ -224,13 +280,13 @@ export function POS() {
 
     } catch (err) {
       console.error(err);
-      alert('Error searching product');
+      showToast('Error searching product', 'error');
     }
   }
 
   function handleProductSelect(product: ProductWithBatches) {
     if (product.batches.length === 0) {
-      alert('No stock available for this product');
+      showToast('No stock available for this product', 'warning');
       return;
     }
 
@@ -252,7 +308,7 @@ export function POS() {
       const newQuantity = newCart[existingItemIndex].quantity + quantity;
 
       if (newQuantity > batch.current_quantity) {
-        alert(`Only ${batch.current_quantity} units available`);
+        showToast(`Only ${batch.current_quantity} units available`, 'warning');
         return;
       }
 
@@ -284,13 +340,51 @@ export function POS() {
       return;
     }
 
-    if (newQuantity > newCart[index].batch.current_quantity) {
-      alert(`Only ${newCart[index].batch.current_quantity} units available`);
+    // Manual items have no stock limit
+    if (!newCart[index].isManual && newQuantity > newCart[index].batch.current_quantity) {
+      showToast(`Only ${newCart[index].batch.current_quantity} units available`, 'warning');
       return;
     }
 
     newCart[index].quantity = newQuantity;
     setCart(newCart);
+  }
+
+  function addManualItem() {
+    const { description, price, quantity } = manualItemForm;
+    if (!description.trim()) {
+      showToast('Please enter a description', 'warning');
+      return;
+    }
+    if (price <= 0) {
+      showToast('Please enter a valid price', 'warning');
+      return;
+    }
+    if (quantity < 1) {
+      showToast('Quantity must be at least 1', 'warning');
+      return;
+    }
+
+    // Stub product & batch so CartItem shape is satisfied (these won't be saved to DB)
+    const stubProduct: any = { id: `manual-${Date.now()}`, name: description, image_url: null };
+    const stubBatch: any = { id: `manual-batch-${Date.now()}`, batch_number: 'MANUAL', selling_price: price, cost_price: 0, current_quantity: 999999 };
+
+    setCart([
+      ...cart,
+      {
+        product: stubProduct,
+        batch: stubBatch,
+        quantity,
+        price,
+        original_price: price,
+        isManual: true,
+        manualDescription: description.trim(),
+      },
+    ]);
+
+    setManualItemForm({ description: '', price: 0, quantity: 1 });
+    setShowManualItemModal(false);
+    showToast(`'${description.trim()}' added to cart`, 'success');
   }
 
   function updateCartItemPrice(index: number, newPrice: number) {
@@ -311,14 +405,7 @@ export function POS() {
     setCart(cart.filter((_, i) => i !== index));
   }
 
-  function clearCart() {
-    setCart([]);
-    setSelectedCustomer(null);
-    setSelectedReferralAgent(null);
-    setPaidAmount(0);
-    setServiceCharge(0);
-    setPaymentMethod('cash');
-  }
+  // clearCart is provided by useCartPersistence (clears & persists empty state)
 
   // Calculations
   const grossSubtotal = cart.reduce((sum, item) => sum + item.original_price * item.quantity, 0);
@@ -355,7 +442,7 @@ export function POS() {
       loadData();
       setSelectedCustomer(data);
     } catch (error: any) {
-      alert(error.message);
+      showToast(`Error creating customer: ${error.message}`, 'error');
     }
   }
 
@@ -382,33 +469,33 @@ export function POS() {
       loadData();
       setSelectedReferralAgent(data);
     } catch (error: any) {
-      alert(error.message);
+      showToast(`Error creating agent: ${error.message}`, 'error');
     }
   }
 
-  async function completeSale() {
+  async function handleCompleteSale() {
     if (cart.length === 0) {
-      alert('Cart is empty');
+      showToast('Cart is empty', 'warning');
       return;
     }
 
     const creditAmount = paymentMethod === 'credit' ? Math.max(0, total - paidAmount) : 0;
 
     if (paymentMethod === 'credit' && !selectedCustomer) {
-      alert('Please select a customer for credit sales');
+      showToast('Please select a customer for credit sales', 'warning');
       return;
     }
 
     if (paymentMethod === 'credit' && selectedCustomer) {
-      const newTotalCredit = selectedCustomer.current_credit + creditAmount;
-      if (newTotalCredit > selectedCustomer.credit_limit) {
-        alert(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)} `);
+      const newCredit = selectedCustomer.current_credit + creditAmount;
+      if (newCredit > selectedCustomer.credit_limit) {
+        showToast(`Credit limit exceeded! Available excess: LKR ${(selectedCustomer.credit_limit - selectedCustomer.current_credit).toFixed(2)}`, 'error');
         return;
       }
     }
 
-    if (paymentMethod !== 'credit' && paidAmount < total) {
-      alert('Paid amount is less than total');
+    if (paymentMethod !== 'credit' && paidAmount < total && paymentMethod !== 'mixed') {
+      showToast('Paid amount is less than total', 'warning');
       return;
     }
 
@@ -421,14 +508,17 @@ export function POS() {
         cashier_id: profile?.id || '',
         referral_agent_id: selectedReferralAgent?.id || null,
         items: cart.map((item) => ({
-          product_id: item.product.id,
-          batch_id: item.batch.id,
+          product_id: item.isManual ? undefined : item.product.id,
+          batch_id: item.isManual ? undefined : item.batch.id,
           quantity: item.quantity,
           unit_price: item.price,
+          selling_price: item.original_price,
           cost_price: item.batch.cost_price,
           warranty_duration: item.warranty_duration,
           warranty_unit: item.warranty_unit,
           warranty_type: item.warranty_type,
+          is_manual: item.isManual || false,
+          manual_description: item.manualDescription,
         })),
         payment_method: paymentMethod,
         subtotal: effectiveSubtotal,
@@ -443,22 +533,25 @@ export function POS() {
       // Prepare invoice data
       setInvoiceData({
         saleNumber: sale.sale_number,
-        date: new Date().toLocaleDateString(),
+        date: new Date().toLocaleString(),
         customerName: selectedCustomer?.name || 'Walk-in Customer',
         customerPhone: selectedCustomer?.phone,
         items: cart.map((item) => ({
-          name: item.product.name,
+          name: item.isManual ? (item.manualDescription || 'Manual Item') : item.product.name,
           quantity: item.quantity,
-          unitPrice: item.price,
-          subtotal: item.price * item.quantity,
-          batchNumber: item.batch.batch_number,
-          warranty: item.warranty_duration ? {
+          unitPrice: item.original_price,
+          discountedUnitPrice: item.price,
+          subtotal: item.original_price * item.quantity,
+          discountedSubtotal: item.price * item.quantity,
+          batchNumber: item.isManual ? '' : item.batch.batch_number,
+          isManual: item.isManual,
+          warranty: (!item.isManual && item.warranty_duration) ? {
             duration: item.warranty_duration,
             unit: item.warranty_unit || 'months',
             type: item.warranty_type
           } : undefined,
         })),
-        subtotal: effectiveSubtotal,
+        subtotal: grossSubtotal,
         discount: itemLevelDiscount,
         tax: taxAmount,
         total,
@@ -495,18 +588,21 @@ export function POS() {
             status: paymentMethod === 'credit' ? (paidAmount > 0 ? 'partial' : 'credit') : 'completed',
           },
           items: cart.map((item) => ({
-            product_id: item.product.id,
-            batch_id: item.batch.id,
+            product_id: item.isManual ? undefined : item.product.id,
+            batch_id: item.isManual ? undefined : item.batch.id,
             quantity: item.quantity,
             unit_price: item.price,
+            selling_price: item.original_price,
             subtotal: item.price * item.quantity,
             total_price: item.price * item.quantity,
             cost_price: item.batch.cost_price,
             warranty_duration: item.warranty_duration,
             warranty_unit: item.warranty_unit,
             warranty_type: item.warranty_type,
+            is_manual: item.isManual || false,
+            manual_description: item.manualDescription,
           })),
-          batches: cart.map(item => ({
+          batches: cart.filter(i => !i.isManual).map(item => ({
             id: item.batch.id,
             newQuantity: item.batch.current_quantity - item.quantity
           })),
@@ -530,7 +626,7 @@ export function POS() {
         });
 
         // Optimization: Deduct stock from local IndexedDB immediately so offline search shows updated stock
-        for (const item of cart) {
+        for (const item of cart.filter(i => !i.isManual)) {
           const product = await db.products.get(item.product.id);
           if (product) {
             const updatedBatches = product.batches.map(b =>
@@ -543,22 +639,25 @@ export function POS() {
         // Show Invoice with warning
         setInvoiceData({
           saleNumber: `[OFFLINE] ${saleNumber} `,
-          date: new Date().toLocaleDateString(),
+          date: new Date().toLocaleString(),
           customerName: selectedCustomer?.name,
           customerPhone: selectedCustomer?.phone,
           items: cart.map(item => ({
-            name: item.product.name,
+            name: item.isManual ? (item.manualDescription || 'Manual Item') : item.product.name,
             quantity: item.quantity,
-            unitPrice: item.price,
-            subtotal: item.price * item.quantity,
-            batchNumber: item.batch.batch_number,
-            warranty: item.warranty_duration ? {
+            unitPrice: item.original_price,
+            discountedUnitPrice: item.price,
+            subtotal: item.original_price * item.quantity,
+            discountedSubtotal: item.price * item.quantity,
+            batchNumber: item.isManual ? '' : item.batch.batch_number,
+            isManual: item.isManual,
+            warranty: (!item.isManual && item.warranty_duration) ? {
               duration: item.warranty_duration,
               unit: item.warranty_unit || 'months',
               type: item.warranty_type
             } : undefined,
           })),
-          subtotal: effectiveSubtotal,
+          subtotal: grossSubtotal,
           discount: itemLevelDiscount,
           tax: taxAmount,
           serviceCharge,
@@ -576,8 +675,8 @@ export function POS() {
       }
 
       logger.error('Sale completion failed', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to complete sale';
-      alert(`Error completing sale: ${errorMessage} `);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      showToast(`Error completing sale: ${errorMessage}`, 'error');
     } finally {
       setProcessing(false);
     }
@@ -600,7 +699,7 @@ export function POS() {
         <div className="lg:col-span-2">
           {/* Search & Filter Bar */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-            <div className="flex gap-4">
+            <div className="flex flex-col md:flex-row md:gap-4 gap-3">
               <div className="flex-1 flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
                 <Search className="w-5 h-5 text-slate-400" />
                 <input
@@ -620,40 +719,42 @@ export function POS() {
                 <Barcode className={`w-5 h-5 ${barcodeBuffer ? 'text-green-600 animate-pulse' : 'text-slate-400'} `} />
               </div>
 
-              <div className="relative min-w-[140px]">
-                <select
-                  value={searchType}
-                  onChange={(e) => setSearchType(e.target.value as SearchType)}
-                  className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
-                >
-                  <option value="all">Auto Search</option>
-                  <option value="name">Product Name</option>
-                  <option value="sku">SKU Code</option>
-                  <option value="barcode">Barcode</option>
-                </select>
-              </div>
+              <div className="flex md:flex-row flex-col gap-3 md:gap-0 md:items-center">
+                <div className="relative flex-1 md:flex-none md:min-w-[140px]">
+                  <select
+                    value={searchType}
+                    onChange={(e) => setSearchType(e.target.value as SearchType)}
+                    className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-2 pl-4 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  >
+                    <option value="all">Auto Search</option>
+                    <option value="name">Product Name</option>
+                    <option value="sku">SKU Code</option>
+                    <option value="barcode">Barcode</option>
+                  </select>
+                </div>
 
-              <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-md transition ${viewMode === 'grid'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                    } `}
-                  title="Grid View"
-                >
-                  <LayoutGrid className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-md transition ${viewMode === 'list'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                    } `}
-                  title="List View"
-                >
-                  <List className="w-5 h-5" />
-                </button>
+                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded-md transition ${viewMode === 'grid'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                      } `}
+                    title="Grid View"
+                  >
+                    <LayoutGrid className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-1.5 rounded-md transition ${viewMode === 'list'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                      } `}
+                    title="List View"
+                  >
+                    <List className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             </div>
             {barcodeBuffer && (
@@ -692,206 +793,221 @@ export function POS() {
                 />
 
                 {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
-                    <div className="text-sm text-slate-600">
-                      Page {page} of {totalPages}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        Previous
-                      </button>
-                      <button
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page >= totalPages}
-                        className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  className="mt-6 pt-4 border-t border-slate-100"
+                />
               </>
             )}
           </div>
         </div>
 
-        {/* Sidebar: Cart & Customer */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sticky top-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Sale Details</h3>
+        {/* Sidebar: Cart & Customer - Hidden on mobile */}
+        <div className="hidden lg:block lg:col-span-1">
+          <div className="bg-slate-50/50 backdrop-blur-sm rounded-2xl border border-slate-200 p-5 sticky top-6 space-y-5">
+            <h3 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3">Sale Details</h3>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Customer (Optional)</label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedCustomer?.id || ''}
-                    onChange={(e) => {
-                      const customer = customers.find((c) => c.id === e.target.value);
-                      setSelectedCustomer(customer || null);
-                    }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  >
-                    <option value="">Walk-in Customer</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomerModal(true)}
-                    className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
-                    title="Add new customer"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+            <div className="space-y-4">
+              {/* Customer & Agent Group */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Client Info</h4>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Customer (Optional)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedCustomer?.id || ''}
+                      onChange={(e) => {
+                        const customer = customers.find((c) => c.id === e.target.value);
+                        setSelectedCustomer(customer || null);
+                      }}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                    >
+                      <option value="">Walk-in Customer</option>
+                      {customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerModal(true)}
+                      className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
+                      title="Add new customer"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Referral Agent (Optional)
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedReferralAgent?.id || ''}
+                      onChange={(e) => {
+                        const agent = referralAgents.find((a) => a.id === e.target.value);
+                        setSelectedReferralAgent(agent || null);
+                      }}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                    >
+                      <option value="">None</option>
+                      {referralAgents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.commission_rate}%)
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgentModal(true)}
+                      className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
+                      title="Add new referral agent"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Payment & Charges Group */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Payment & Charges</h4>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Payment Method</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm transition appearance-none bg-slate-50"
+                    >
+                      <option value="cash">Cash Payment</option>
+                      <option value="card">Card Payment</option>
+                      <option value="credit">Credit Sale</option>
+                      <option value="mixed">Mixed Payment</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Tax Rate (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={taxRate === 0 ? '' : taxRate}
+                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      max="100"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-slate-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Service Charge</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={serviceCharge === 0 ? '' : serviceCharge}
+                      onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-slate-50"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paidAmount === 0 ? '' : paidAmount}
+                      onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-lg font-bold bg-slate-50"
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Referral Agent (Optional)
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedReferralAgent?.id || ''}
-                    onChange={(e) => {
-                      const agent = referralAgents.find((a) => a.id === e.target.value);
-                      setSelectedReferralAgent(agent || null);
-                    }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  >
-                    <option value="">None</option>
-                    {referralAgents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name} ({agent.commission_rate}%)
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowAgentModal(true)}
-                    className="px-3 py-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition flex items-center gap-1"
-                    title="Add new referral agent"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+              {/* Summary Card */}
+              <div className="bg-slate-900 text-white p-5 rounded-xl shadow-lg space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <DollarSign className="w-16 h-16" />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tax Rate (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={taxRate === 0 ? '' : taxRate}
-                  onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  max="100"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="credit">Credit</option>
-                  <option value="mixed">Mixed</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Service / Support Charge</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={serviceCharge === 0 ? '' : serviceCharge}
-                  onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={paidAmount === 0 ? '' : paidAmount}
-                  onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Subtotal:</span>
-                  <span className="font-medium text-slate-900">LKR {grossSubtotal.toFixed(2)}</span>
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Subtotal:</span>
+                  <span>LKR {grossSubtotal.toFixed(2)}</span>
                 </div>
+
                 {itemLevelDiscount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-orange-600">Item Discounts:</span>
-                    <span className="font-medium text-orange-600">-LKR {itemLevelDiscount.toFixed(2)}</span>
+                  <div className="flex justify-between text-xs text-orange-400">
+                    <span>Discount:</span>
+                    <span>-LKR {itemLevelDiscount.toFixed(2)}</span>
                   </div>
                 )}
-                {taxRate > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Tax ({taxRate}%):</span>
-                    <span className="font-medium text-slate-900">LKR {taxAmount.toFixed(2)}</span>
+
+                {(taxRate > 0 || serviceCharge > 0) && (
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Taxes & Charges:</span>
+                    <span>LKR {(taxAmount + serviceCharge).toFixed(2)}</span>
                   </div>
                 )}
-                {serviceCharge > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Service Charge:</span>
-                    <span className="font-medium text-slate-900">LKR {serviceCharge.toFixed(2)}</span>
+
+                <div className="flex justify-between items-end pt-2 border-t border-slate-800 mt-2">
+                  <span className="text-sm font-medium text-slate-400">Payable Total</span>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-white leading-none">
+                      LKR {total.toFixed(2)}
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
-                  <span className="text-slate-900">Total:</span>
-                  <span className="text-slate-900">LKR {total.toFixed(2)}</span>
                 </div>
               </div>
 
               {changeAmount > 0 && paymentMethod === 'cash' && (
-                <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                  <div className="flex justify-between items-center text-green-700">
-                    <span className="text-sm font-medium">Change:</span>
-                    <span className="text-lg font-bold">LKR {changeAmount.toFixed(2)}</span>
-                  </div>
+                <div className="p-4 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                  <span className="text-xs font-semibold text-green-600 uppercase tracking-wider">Change Due</span>
+                  <span className="text-xl font-bold text-green-700 leading-none">LKR {changeAmount.toFixed(2)}</span>
                 </div>
               )}
             </div>
 
             <div className="border-t border-slate-100 pt-6">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-3">
                 <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
                 {cart.length > 0 && (
                   <button
                     onClick={clearCart}
-                    className="text-xs text-red-600 hover:text-red-700"
+                    className="text-xs text-red-600 hover:text-red-700 font-medium"
                   >
                     Clear All
                   </button>
                 )}
               </div>
+
+              {/* Add Manual Item Button */}
+              <button
+                onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1 }); setShowManualItemModal(true); }}
+                className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition text-sm font-medium"
+              >
+                <Tag className="w-4 h-4" />
+                Add Manual Item
+              </button>
+
               <div className="-mx-2 px-2">
                 <CartItemsList
                   items={cart}
@@ -905,7 +1021,7 @@ export function POS() {
 
             <div className="mt-6 space-y-2">
               <button
-                onClick={completeSale}
+                onClick={handleCompleteSale}
                 disabled={cart.length === 0 || processing}
                 className="w-full py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
@@ -915,6 +1031,262 @@ export function POS() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Cart Drawer - Visible only on mobile when toggled */}
+      {cartDrawerOpen && (
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40 flex items-end" onClick={() => setCartDrawerOpen(false)}>
+          <div className="bg-white w-full rounded-t-3xl border-t border-slate-200 flex flex-col max-h-[90vh] sm:max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            {/* Fixed Header */}
+            <div className="px-4 sm:px-6 pt-4 pb-3 flex justify-between items-center border-b border-slate-200 flex-shrink-0">
+              <h3 className="text-xl font-bold text-slate-900">Sale Details</h3>
+              <button onClick={() => setCartDrawerOpen(false)} className="p-2 hover:bg-slate-100 rounded-lg transition" title="Close">
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6">
+              {/* Customer & Agent Group */}
+              <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Client Info</h4>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Customer (Optional)</label>
+                  <div className="flex gap-2 items-stretch">
+                    <select
+                      value={selectedCustomer?.id || ''}
+                      onChange={(e) => {
+                        const customer = customers.find((c) => c.id === e.target.value);
+                        setSelectedCustomer(customer || null);
+                      }}
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                      title="Select customer"
+                    >
+                      <option value="">Walk-in Customer</option>
+                      {customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerModal(true)}
+                      className="flex-shrink-0 p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition"
+                      title="Add new customer"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Referral Agent (Optional)</label>
+                  <div className="flex gap-2 items-stretch">
+                    <select
+                      value={selectedReferralAgent?.id || ''}
+                      onChange={(e) => {
+                        const agent = referralAgents.find((a) => a.id === e.target.value);
+                        setSelectedReferralAgent(agent || null);
+                      }}
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm"
+                      title="Select referral agent"
+                    >
+                      <option value="">None</option>
+                      {referralAgents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.commission_rate}%)
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowAgentModal(true)}
+                      className="flex-shrink-0 p-2 bg-slate-100 text-slate-900 rounded-lg hover:bg-slate-200 transition"
+                      title="Add new referral agent"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment & Charges Group */}
+              <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="w-4 h-4 text-slate-900" />
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Payment & Charges</h4>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Payment Method</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as any)}
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm transition appearance-none bg-white hover:border-slate-400"
+                      title="Select payment method"
+                    >
+                      <option value="cash">Cash Payment</option>
+                      <option value="card">Card Payment</option>
+                      <option value="credit">Credit Sale</option>
+                      <option value="mixed">Mixed Payment</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Tax Rate (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={taxRate === 0 ? '' : taxRate}
+                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      max="100"
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-white"
+                      placeholder="0"
+                      title="Enter tax rate"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-2">Service Charge</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={serviceCharge === 0 ? '' : serviceCharge}
+                      onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-sm bg-white"
+                      placeholder="0.00"
+                      title="Enter service charge"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-2">
+                      {paymentMethod === 'credit' ? 'Down Payment / Partial Pay' : 'Paid Amount'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paidAmount === 0 ? '' : paidAmount}
+                      onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                      min="0"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none text-base sm:text-lg font-bold bg-white"
+                      placeholder="0.00"
+                      title="Enter paid amount"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Summary Card */}
+              <div className="bg-slate-900 text-white p-5 rounded-xl shadow-lg space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <DollarSign className="w-16 h-16" />
+                </div>
+
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Subtotal:</span>
+                  <span>LKR {grossSubtotal.toFixed(2)}</span>
+                </div>
+
+                {itemLevelDiscount > 0 && (
+                  <div className="flex justify-between text-xs text-orange-400">
+                    <span>Discount:</span>
+                    <span>-LKR {itemLevelDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {(taxRate > 0 || serviceCharge > 0) && (
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Taxes & Charges:</span>
+                    <span>LKR {(taxAmount + serviceCharge).toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-end pt-2 border-t border-slate-800 mt-2">
+                  <span className="text-sm font-medium text-slate-400">Payable Total</span>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-white leading-none">
+                      LKR {total.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {changeAmount > 0 && paymentMethod === 'cash' && (
+                <div className="p-4 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
+                  <span className="text-xs font-semibold text-green-600 uppercase tracking-wider">Change Due</span>
+                  <span className="text-xl font-bold text-green-700 leading-none">LKR {changeAmount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Cart Section */}
+              <div className="border-t border-slate-200 pt-5">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold text-slate-900">Cart ({cart.length})</h4>
+                  {cart.length > 0 && (
+                    <button
+                      onClick={clearCart}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                      title="Clear all items from cart"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                {/* Add Manual Item Button */}
+                <button
+                  onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1 }); setShowManualItemModal(true); }}
+                  className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition text-sm font-medium"
+                >
+                  <Tag className="w-4 h-4" />
+                  Add Manual Item
+                </button>
+
+                <div className="-mx-4 sm:-mx-6 px-4 sm:px-6">
+                  <CartItemsList
+                    items={cart}
+                    onUpdateQuantity={updateCartItemQuantity}
+                    onUpdatePrice={updateCartItemPrice}
+                    onUpdateWarranty={updateCartItemWarranty}
+                    onRemoveItem={removeFromCart}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Fixed Footer - Sticky Checkout Button */}
+            <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-white/95 pt-3 px-4 sm:px-6 pb-4 sm:pb-6 border-t border-slate-200 flex-shrink-0 space-y-2">
+              <button
+                onClick={handleCompleteSale}
+                disabled={cart.length === 0 || processing}
+                className="w-full py-3.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-base min-h-[48px] shadow-lg"
+                title={cart.length === 0 ? 'Add items to cart first' : 'Complete the sale'}
+              >
+                {processing ? 'Processing...' : 'Complete Sale'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Cart Toggle Button */}
+      {!cartDrawerOpen && (
+        <button
+          onClick={() => setCartDrawerOpen(true)}
+          className="lg:hidden fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-full shadow-lg flex items-center gap-2 hover:bg-slate-800 transition z-30 min-h-[48px] min-w-[48px]"
+          title="Show cart"
+        >
+          <DollarSign className="w-6 h-6" />
+          <span className="font-bold text-lg">{cart.length}</span>
+        </button>
+      )}
 
       {/* Modals & Invoice */}
       {showInvoice && invoiceData && (
@@ -1087,6 +1459,88 @@ export function POS() {
                 Save Agent
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Item Modal */}
+      {showManualItemModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <Tag className="w-4 h-4 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Add Manual Item</h3>
+              </div>
+              <button
+                onClick={() => setShowManualItemModal(false)}
+                className="p-1 hover:bg-slate-100 rounded-md transition"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description *</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="e.g. Bus Fare, Repair Charge, Delivery"
+                  value={manualItemForm.description}
+                  onChange={(e) => setManualItemForm({ ...manualItemForm, description: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Unit Price (LKR) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={manualItemForm.price === 0 ? '' : manualItemForm.price}
+                    onChange={(e) => setManualItemForm({ ...manualItemForm, price: parseFloat(e.target.value) || 0 })}
+                    onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={manualItemForm.quantity}
+                    onChange={(e) => setManualItemForm({ ...manualItemForm, quantity: parseInt(e.target.value) || 1 })}
+                    onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                  />
+                </div>
+              </div>
+              {manualItemForm.price > 0 && manualItemForm.quantity > 0 && (
+                <p className="text-sm text-slate-500">
+                  Total: <span className="font-bold text-slate-900">LKR {(manualItemForm.price * manualItemForm.quantity).toFixed(2)}</span>
+                </p>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={() => setShowManualItemModal(false)}
+                className="flex-1 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addManualItem}
+                className="flex-1 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition text-sm font-medium"
+              >
+                Add to Cart
+              </button>
+            </div>
           </div>
         </div>
       )}

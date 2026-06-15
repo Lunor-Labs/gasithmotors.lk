@@ -386,34 +386,52 @@ export interface Database {
         Row: {
           id: string
           sale_id: string
-          product_id: string
-          batch_id: string
+          product_id: string | null
+          batch_id: string | null
           quantity: number
           unit_price: number
+          selling_price: number
           cost_price: number
           subtotal: number
+          is_manual: boolean
+          manual_description: string | null
+          warranty_duration: number | null
+          warranty_unit: string | null
+          warranty_type: string | null
           created_at: string
         }
         Insert: {
           id?: string
           sale_id: string
-          product_id: string
-          batch_id: string
+          product_id?: string | null
+          batch_id?: string | null
           quantity: number
           unit_price: number
+          selling_price: number
           cost_price: number
           subtotal: number
+          is_manual?: boolean
+          manual_description?: string | null
+          warranty_duration?: number | null
+          warranty_unit?: string | null
+          warranty_type?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           sale_id?: string
-          product_id?: string
-          batch_id?: string
+          product_id?: string | null
+          batch_id?: string | null
           quantity?: number
           unit_price?: number
+          selling_price?: number
           cost_price?: number
           subtotal?: number
+          is_manual?: boolean
+          manual_description?: string | null
+          warranty_duration?: number | null
+          warranty_unit?: string | null
+          warranty_type?: string | null
           created_at?: string
         }
       }

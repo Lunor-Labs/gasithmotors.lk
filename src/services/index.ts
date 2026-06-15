@@ -14,7 +14,7 @@ export const salesService = new SalesService(saleRepository, customerRepository,
 export const customerService = new CustomerService(customerRepository, referralAgentRepository);
 export const supplierService = new SupplierService(supplierRepository);
 export const purchaseOrderService = new PurchaseOrderService(purchaseOrderRepository, productService);
-export const returnService = new ReturnService(returnRepository, salesService, productService, customerService);
+export const returnService = new ReturnService(returnRepository, productService, customerService);
 
 // Export service classes for testing
 export { ProductService, SalesService, InventoryService, CustomerService, SupplierService, PurchaseOrderService, ReturnService };

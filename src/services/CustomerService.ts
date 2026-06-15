@@ -108,4 +108,13 @@ export class CustomerService {
             throw error;
         }
     }
+
+    async updateCredit(customerId: string, amount: number): Promise<Customer> {
+        try {
+            return await this.customerRepo.updateCredit(customerId, amount);
+        } catch (error) {
+            logger.error('Failed to update customer credit', error as Error);
+            throw error;
+        }
+    }
 }

@@ -123,27 +123,64 @@ export class ProductService {
             // Validate required fields
             this.validateProductData(productData);
 
+            // Process and validate unique fields
+            const sku = productData.sku?.trim() || null;
+            const barcode = productData.barcode?.trim() || null;
+
             // Check for duplicate SKU
-            if (productData.sku) {
-                const existing = await this.productRepo.findBySku(productData.sku);
+            if (sku) {
+                const existing = await this.productRepo.findBySku(sku);
                 if (existing) {
-                    throw new Error(`Product with SKU "${productData.sku}" already exists.`);
+                    throw new Error(`Product with SKU "${sku}" already exists.`);
                 }
+            } else {
+                throw new Error('SKU is required.');
             }
 
             // Check for duplicate barcode
-            if (productData.barcode) {
-                const existing = await this.productRepo.findByBarcode(productData.barcode);
+            if (barcode) {
+                const existing = await this.productRepo.findByBarcode(barcode);
                 if (existing) {
-                    throw new Error(`Product with barcode "${productData.barcode}" already exists.`);
+                    throw new Error(`Product with barcode "${barcode}" already exists.`);
                 }
             }
 
+            // Separate batch data from product data
+            const {
+                initial_quantity,
+                cost_price,
+                markup_percentage,
+                selling_price,
+                supplier_id,
+                ...pureProductData
+            } = productData as any;
+
             const product = await this.productRepo.create({
-                ...productData,
+                ...pureProductData,
+                sku,
+                barcode,
                 active: true,
                 created_at: new Date().toISOString(),
             });
+
+            // If initial stock is provided, create a batch
+            if (initial_quantity && initial_quantity > 0) {
+                const finalMarkup = markup_percentage !== undefined ? markup_percentage :
+                    (cost_price > 0 ? ((selling_price - cost_price) / cost_price) * 100 : 0);
+
+                await this.createBatch({
+                    product_id: product.id,
+                    supplier_id: supplier_id || null,
+                    initial_quantity,
+                    current_quantity: initial_quantity,
+                    cost_price: cost_price || 0,
+                    markup_percentage: parseFloat(finalMarkup.toFixed(2)),
+                    selling_price: selling_price || 0,
+                    received_date: new Date().toISOString().split('T')[0],
+                    batch_number: `B-${Date.now()}`,
+                });
+                logger.info('Initial batch created for new product', { productId: product.id, quantity: initial_quantity });
+            }
 
             logger.info('Product created successfully', {
                 productId: product.id,
@@ -171,26 +208,49 @@ export class ProductService {
                 throw new Error('Product not found.');
             }
 
+            // Process and validate unique fields if they are being updated
+            const sku = updates.sku !== undefined ? (updates.sku?.trim() || null) : undefined;
+            const barcode = updates.barcode !== undefined ? (updates.barcode?.trim() || null) : undefined;
+
             // Validate SKU uniqueness if changing
-            if (updates.sku && updates.sku !== existing.sku) {
-                const duplicate = await this.productRepo.findBySku(updates.sku);
+            if (sku !== undefined && sku !== existing.sku) {
+                if (sku === null) {
+                    throw new Error('SKU cannot be empty.');
+                }
+                const duplicate = await this.productRepo.findBySku(sku);
                 if (duplicate && duplicate.id !== id) {
-                    throw new Error(`SKU "${updates.sku}" is already in use.`);
+                    throw new Error(`SKU "${sku}" is already in use.`);
                 }
             }
 
             // Validate barcode uniqueness if changing
-            if (updates.barcode && updates.barcode !== existing.barcode) {
-                const duplicate = await this.productRepo.findByBarcode(updates.barcode);
-                if (duplicate && duplicate.id !== id) {
-                    throw new Error(`Barcode "${updates.barcode}" is already in use.`);
+            if (barcode !== undefined && barcode !== existing.barcode) {
+                if (barcode !== null) {
+                    const duplicate = await this.productRepo.findByBarcode(barcode);
+                    if (duplicate && duplicate.id !== id) {
+                        throw new Error(`Barcode "${barcode}" is already in use.`);
+                    }
                 }
             }
 
-            const product = await this.productRepo.update(id, {
-                ...updates,
+            // Strip batch fields that don't belong in products table
+            const {
+                initial_quantity,
+                cost_price,
+                markup_percentage,
+                selling_price,
+                supplier_id,
+                ...pureUpdates
+            } = updates as any;
+
+            const productObject: any = {
+                ...pureUpdates,
                 updated_at: new Date().toISOString(),
-            });
+            };
+            if (sku !== undefined) productObject.sku = sku;
+            if (barcode !== undefined) productObject.barcode = barcode;
+
+            const product = await this.productRepo.update(id, productObject);
 
             logger.info('Product updated successfully', { productId: id });
 
@@ -330,6 +390,23 @@ export class ProductService {
             if (error) throw error;
         } catch (error) {
             logger.error('Failed to create batch', error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update product batch
+     */
+    async updateBatch(batchId: string, updates: any): Promise<void> {
+        try {
+            const client = (this.productRepo as any).adapter.getClient();
+            const { error } = await client
+                .from('product_batches')
+                .update(updates)
+                .eq('id', batchId);
+            if (error) throw error;
+        } catch (error) {
+            logger.error('Failed to update batch', error as Error);
             throw error;
         }
     }

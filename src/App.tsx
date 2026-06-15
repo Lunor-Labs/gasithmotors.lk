@@ -13,6 +13,8 @@ import { SalesHistory } from './components/SalesHistory';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { StockFilter } from './hooks/useProducts';
+import { ToastProvider } from './contexts/ToastContext';
+import { ToastContainer } from './components/ui';
 
 function AppContent() {
   const { user, profile, loading } = useAuth();
@@ -42,9 +44,17 @@ function AppContent() {
   return (
     <Layout currentView={currentView} onNavigate={(view) => handleNavigate(view)}>
       {currentView === 'dashboard' && (
-        <Dashboard onFilterNavigate={(filter) => handleNavigate('products', filter)} />
+        <Dashboard
+          onNavigate={(view) => handleNavigate(view)}
+          onFilterNavigate={(filter) => handleNavigate('products', filter)}
+        />
       )}
-      {currentView === 'pos' && <POS />}
+
+      {/* POS is always mounted but hidden — preserves cart and all state */}
+      <div style={{ display: currentView === 'pos' ? 'block' : 'none' }}>
+        <POS isActive={currentView === 'pos'} />
+      </div>
+
       {currentView === 'products' && (
         <Products key={initialStockFilter} initialStockFilter={initialStockFilter} />
       )}
@@ -62,7 +72,10 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+        <ToastContainer />
+      </ToastProvider>
     </AuthProvider>
   );
 }

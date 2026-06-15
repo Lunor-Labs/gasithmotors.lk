@@ -10,14 +10,17 @@ export interface CreateSaleInput {
     cashier_id: string;
     referral_agent_id?: string | null;
     items: Array<{
-        product_id: string;
-        batch_id: string;
+        product_id?: string | null;
+        batch_id?: string | null;
         quantity: number;
         unit_price: number;
+        selling_price: number;
         cost_price: number;
         warranty_duration?: number;
         warranty_unit?: 'days' | 'months' | 'years';
         warranty_type?: string;
+        is_manual?: boolean;
+        manual_description?: string;
     }>;
     payment_method: 'cash' | 'card' | 'credit' | 'mixed';
     subtotal: number;
@@ -91,19 +94,30 @@ export class SalesService {
 
             // Prepare sale items
             const saleItems: Partial<SaleItem>[] = input.items.map(item => ({
-                product_id: item.product_id,
-                batch_id: item.batch_id,
+                product_id: item.product_id || null,
+                batch_id: item.batch_id || null,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
+                selling_price: item.selling_price,
                 cost_price: item.cost_price,
                 subtotal: item.quantity * item.unit_price,
                 warranty_duration: item.warranty_duration || 0,
                 warranty_unit: item.warranty_unit || null,
                 warranty_type: item.warranty_type || null,
+                is_manual: item.is_manual || false,
+                manual_description: item.manual_description || null,
             }));
 
-            // Deduct stock levels
-            await this.inventoryRepo.deductStock(input.items);
+            // Only deduct stock for regular (non-manual) items
+            const stockItems = input.items.filter(i => !i.is_manual) as Array<{
+                product_id: string;
+                batch_id: string;
+                quantity: number;
+                unit_price: number;
+                selling_price: number;
+                cost_price: number;
+            }>;
+            await this.inventoryRepo.deductStock(stockItems);
 
             // Create sale with items
             const sale = await this.saleRepo.createWithItems(saleData, saleItems);
@@ -290,6 +304,14 @@ export class SalesService {
             if (item.unit_price < 0) {
                 throw new Error('Item price cannot be negative.');
             }
+            // Regular items must have product and batch references
+            if (!item.is_manual && (!item.product_id || !item.batch_id)) {
+                throw new Error('Regular items must have a product and batch.');
+            }
+            // Manual items must have a description
+            if (item.is_manual && !item.manual_description?.trim()) {
+                throw new Error('Manual items must have a description.');
+            }
         }
     }
 
@@ -354,8 +376,10 @@ export class SalesService {
                 throw new Error('Cannot delete a sale that has associated returns. Please handle returns first.');
             }
 
-            // 3. Restore stock levels
+            // 3. Restore stock levels (skip manual items which have no batch)
             for (const item of sale.items) {
+                if (item.is_manual || !item.batch_id) continue;
+
                 // Get current batch to know current quantity
                 const client = (this.productRepo as any).adapter.getClient();
                 const { data: batch, error } = await client
@@ -449,17 +473,73 @@ export class SalesService {
     }
 
     /**
+     * Get sales history with cost (COGS) for revenue vs expense chart.
+     * Returns daily grouped data with both revenue and cost totals.
+     */
+    async getSalesHistoryWithCost(days: number = 30): Promise<{ date: string; revenue: number; cost: number }[]> {
+        try {
+            const adapter = (this.saleRepo as any).adapter;
+            const since = new Date();
+            since.setDate(since.getDate() - days);
+            const sinceStr = since.toISOString();
+
+            // Fetch sales for revenue
+            const sales: any[] = await adapter.query('sales', {
+                select: 'created_at, total_amount',
+                where: [{ field: 'created_at', operator: '>=', value: sinceStr }],
+                orderBy: [{ field: 'created_at', direction: 'asc' }],
+            });
+
+            // Fetch sale items for COGS
+            const items: any[] = await adapter.query('sale_items', {
+                select: 'created_at, cost_price, quantity',
+                where: [{ field: 'created_at', operator: '>=', value: sinceStr }],
+            });
+
+            // Group revenue by date
+            const revenueMap = new Map<string, number>();
+            for (const s of sales) {
+                const day = new Date(s.created_at).toISOString().split('T')[0];
+                revenueMap.set(day, (revenueMap.get(day) || 0) + Number(s.total_amount));
+            }
+
+            // Group cost by date
+            const costMap = new Map<string, number>();
+            for (const item of items) {
+                const day = new Date(item.created_at).toISOString().split('T')[0];
+                costMap.set(day, (costMap.get(day) || 0) + Number(item.cost_price) * Number(item.quantity));
+            }
+
+            // Merge into sorted daily array
+            const allDays = Array.from(new Set([...revenueMap.keys(), ...costMap.keys()])).sort();
+            return allDays.map(day => ({
+                date: day,
+                revenue: revenueMap.get(day) || 0,
+                cost: costMap.get(day) || 0,
+            }));
+        } catch (error) {
+            logger.error('Failed to fetch sales history with cost', error as Error);
+            throw new Error('Unable to fetch chart data');
+        }
+    }
+
+    /**
      * Get top selling items
      */
-    async getTopSellingItems(limit: number = 5) {
+    async getTopSellingItems(limit: number = 5, period: 'month' | 'all' = 'all') {
         try {
-            const date = new Date();
-            const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
-
             const adapter = (this.saleRepo as any).adapter;
+            
+            let whereClause: any[] | undefined = undefined;
+            if (period === 'month') {
+                const date = new Date();
+                const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
+                whereClause = [{ field: 'created_at', operator: '>=', value: firstDayOfMonth }];
+            }
+
             const items = await adapter.query('sale_items', {
                 select: 'quantity, products(name)',
-                where: [{ field: 'created_at', operator: '>=', value: firstDayOfMonth }]
+                where: whereClause
             });
 
             // Aggregate items
@@ -507,6 +587,18 @@ export class SalesService {
         } catch (error) {
             logger.error('Failed to fetch sales', error as Error);
             throw new Error('Unable to load sales data');
+        }
+    }
+
+    /**
+     * Get a single sale by ID with details
+     */
+    async getSaleById(saleId: string): Promise<any> {
+        try {
+            return await this.saleRepo.findByIdWithItems(saleId);
+        } catch (error) {
+            logger.error('Failed to fetch sale by ID', error as Error, { saleId });
+            throw new Error('Unable to load sale details');
         }
     }
 
@@ -613,5 +705,35 @@ export class SalesService {
         const timestamp = Date.now().toString().slice(-6);
 
         return `SALE-${year}${month}${day}-${timestamp}`;
+    }
+
+    /**
+     * Add a custom commission for a sale
+     */
+    async addCustomCommission(data: {
+        referral_agent_id: string;
+        sale_id: string;
+        commission_amount: number;
+        sale_amount: number;
+    }) {
+        try {
+            logger.info('Adding custom commission', data);
+
+            // Calculate a temporary rate for display/reference
+            const commissionRate = (data.commission_amount / data.sale_amount) * 100;
+
+            await this.saleRepo.createCommission({
+                referral_agent_id: data.referral_agent_id,
+                sale_id: data.sale_id,
+                commission_amount: data.commission_amount,
+                commission_rate: Math.round(commissionRate * 100) / 100,
+                sale_amount: data.sale_amount,
+            });
+
+            logger.info('Custom commission added successfully');
+        } catch (error) {
+            logger.error('Failed to add custom commission', error as Error);
+            throw error;
+        }
     }
 }
