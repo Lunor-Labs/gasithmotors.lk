@@ -5,7 +5,7 @@ import { Eye, FileText, Trash2, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { salesService } from '../services';
-import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
+import { Modal, SearchBar, LoadingSpinner, EmptyState, Pagination } from './ui';
 
 type Sale = Database['public']['Tables']['sales']['Row'] & {
     cashier?: { full_name: string } | null;
@@ -31,6 +31,8 @@ export function SalesHistory() {
         start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0], // Last 30 days
         end: new Date().toISOString().split('T')[0],
     });
+    const [currentPage, setCurrentPage] = useState(1);
+    const PAGE_SIZE = 10;
 
     // Modal state
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
@@ -85,6 +87,22 @@ export function SalesHistory() {
         sale.sale_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (sale.customer?.name && sale.customer.name.toLowerCase().includes(searchTerm.toLowerCase()))
     );
+
+    const totalPages = Math.ceil(filteredSales.length / PAGE_SIZE);
+    const paginatedSales = filteredSales.slice(
+        (currentPage - 1) * PAGE_SIZE,
+        currentPage * PAGE_SIZE
+    );
+
+    function handleSearch(value: string) {
+        setSearchTerm(value);
+        setCurrentPage(1);
+    }
+
+    function handleDateChange(field: 'start' | 'end', value: string) {
+        setDateRange(prev => ({ ...prev, [field]: value }));
+        setCurrentPage(1);
+    }
 
     async function confirmDeleteSale() {
         if (!saleToDelete) return;
@@ -165,7 +183,7 @@ export function SalesHistory() {
 
             <SearchBar
                 value={searchTerm}
-                onChange={setSearchTerm}
+                onChange={handleSearch}
                 placeholder="Search by receipt number or customer..."
             >
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-3 w-full md:w-auto">
@@ -174,7 +192,7 @@ export function SalesHistory() {
                         <input
                             type="date"
                             value={dateRange.start}
-                            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                            onChange={(e) => handleDateChange('start', e.target.value)}
                             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 outline-none flex-1 sm:flex-none"
                             title="Select start date"
                         />
@@ -184,7 +202,7 @@ export function SalesHistory() {
                         <input
                             type="date"
                             value={dateRange.end}
-                            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                            onChange={(e) => handleDateChange('end', e.target.value)}
                             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 outline-none flex-1 sm:flex-none"
                             title="Select end date"
                         />
@@ -202,7 +220,7 @@ export function SalesHistory() {
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     {/* Mobile Card Layout */}
                     <div className="block md:hidden">
-                        {filteredSales.map((sale) => (
+                        {paginatedSales.map((sale) => (
                             <div key={sale.id} className="border-b border-slate-200 last:border-b-0 p-4 space-y-3 hover:bg-slate-50 transition">
                                 <div className="flex justify-between items-start mb-2">
                                     <div>
@@ -266,7 +284,7 @@ export function SalesHistory() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {filteredSales.map((sale) => (
+                                {paginatedSales.map((sale) => (
                                     <tr key={sale.id} className="hover:bg-slate-50 transition">
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                                             {new Date(sale.sale_date).toLocaleDateString()} {new Date(sale.sale_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -320,6 +338,16 @@ export function SalesHistory() {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <p className="text-sm text-slate-500">
+                            Showing {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredSales.length)}–{Math.min(currentPage * PAGE_SIZE, filteredSales.length)} of {filteredSales.length} sales
+                        </p>
+                        <Pagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            onPageChange={setCurrentPage}
+                        />
                     </div>
                 </div>
             )}
