@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Database } from '../lib/database.types';
-import { Plus, Users, CreditCard, CheckCircle, Clock, Eye, FileText, X, UserPlus, Edit } from 'lucide-react';
+import { Plus, Users, CreditCard, CheckCircle, Clock, Eye, FileText, UserPlus, Edit } from 'lucide-react';
 import { Invoice, InvoiceData } from './Invoice';
 import { customerService, salesService } from '../services';
 import { useToast } from '../contexts/ToastContext';
-import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
+import { Modal, SearchBar, LoadingSpinner, EmptyState, Pagination } from './ui';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 
@@ -37,6 +37,8 @@ export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -278,6 +280,17 @@ export function Customers() {
     (customer.phone && customer.phone.includes(searchTerm))
   );
 
+  const totalPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
+  const paginatedCustomers = filteredCustomers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  function handleSearch(value: string) {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  }
+
   if (loading) {
     return <LoadingSpinner message="Loading customers..." />;
   }
@@ -300,7 +313,7 @@ export function Customers() {
 
       <SearchBar
         value={searchTerm}
-        onChange={setSearchTerm}
+        onChange={handleSearch}
         placeholder="Search customers by name or phone..."
       />
 
@@ -312,74 +325,91 @@ export function Customers() {
           action={!searchTerm ? { label: 'Add Your First Customer', onClick: openAddModal } : undefined}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCustomers.map((customer) => (
-            <div
-              key={customer.id}
-              className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-slate-100 p-2 rounded-lg">
-                    <Users className="w-6 h-6 text-slate-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900">{customer.name}</h3>
-                    {customer.phone && (
-                      <p className="text-sm text-slate-500">{customer.phone}</p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => openEditModal(customer)}
-                  className="p-1 hover:bg-slate-100 rounded transition"
-                >
-                  <Edit className="w-4 h-4 text-slate-600" />
-                </button>
-              </div>
-
-              <div className="space-y-2 text-sm mb-4">
-                {customer.email && (
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <span className="font-medium">Email:</span>
-                    <span>{customer.email}</span>
-                  </div>
-                )}
-                {customer.address && (
-                  <div className="flex items-start gap-2 text-slate-600">
-                    <span className="font-medium">Address:</span>
-                    <span>{customer.address}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-4 border-t border-slate-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-slate-500" />
-                    <span className="text-sm text-slate-600">Credit</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-slate-900">
-                      LKR {customer.current_credit.toFixed(2)} / LKR {customer.credit_limit.toFixed(2)}
-                    </p>
-                    <p className="text-xs text-slate-500">Used / Limit</p>
-                  </div>
-                </div>
-              </div>
-              {customer.current_credit > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                  <button
-                    onClick={() => openCreditModal(customer)}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition border border-slate-200"
-                  >
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    Manage Credit & Payments
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Address</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Credit Used / Limit</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {paginatedCustomers.map((customer) => (
+                  <tr key={customer.id} className="hover:bg-slate-50 transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-slate-100 p-2 rounded-lg shrink-0">
+                          <Users className="w-4 h-4 text-slate-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{customer.name}</p>
+                          {customer.phone && <p className="text-xs text-slate-500">{customer.phone}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">
+                      {customer.email || <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600 max-w-xs">
+                      {customer.address ? (
+                        <span className="line-clamp-2">{customer.address}</span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <p className="text-sm font-medium text-slate-900">
+                        LKR {customer.current_credit.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-slate-500">of LKR {customer.credit_limit.toFixed(2)}</p>
+                      {customer.current_credit > 0 && (
+                        <div className="mt-1.5 h-1 w-24 ml-auto bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-1 bg-red-500 rounded-full"
+                            style={{ width: `${customer.credit_limit > 0 ? Math.min(100, (customer.current_credit / customer.credit_limit) * 100) : 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEditModal(customer)}
+                          className="p-1.5 hover:bg-slate-100 rounded-lg transition text-slate-600 hover:text-slate-900"
+                          title="Edit Customer"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        {customer.current_credit > 0 && (
+                          <button
+                            onClick={() => openCreditModal(customer)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition border border-slate-200"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                            Manage Credit
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-slate-500">
+              Showing {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredCustomers.length)}–{Math.min(currentPage * PAGE_SIZE, filteredCustomers.length)} of {filteredCustomers.length} customers
+            </p>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         </div>
       )}
 

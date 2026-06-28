@@ -3,7 +3,7 @@ import { Database } from '../lib/database.types';
 import { Plus, UserCheck, DollarSign, Edit, CheckCircle, PackageOpen, Eye } from 'lucide-react';
 import { customerService, salesService } from '../services';
 import { useToast } from '../contexts/ToastContext';
-import { Modal, SearchBar, LoadingSpinner, EmptyState } from './ui';
+import { Modal, SearchBar, LoadingSpinner, EmptyState, Pagination } from './ui';
 import { Invoice, InvoiceData } from './Invoice';
 
 type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
@@ -26,6 +26,8 @@ export function ReferralAgents() {
   const [agents, setAgents] = useState<ReferralAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // Agent Modal State
   const [showModal, setShowModal] = useState(false);
@@ -295,6 +297,17 @@ export function ReferralAgents() {
     (agent.phone && agent.phone.includes(searchTerm))
   );
 
+  const totalPages = Math.ceil(filteredAgents.length / PAGE_SIZE);
+  const paginatedAgents = filteredAgents.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  function handleSearch(value: string) {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  }
+
   if (loading) {
     return <LoadingSpinner message="Loading referral agents..." />;
   }
@@ -317,7 +330,7 @@ export function ReferralAgents() {
 
       <SearchBar
         value={searchTerm}
-        onChange={setSearchTerm}
+        onChange={handleSearch}
         placeholder="Search agents by name or phone..."
       />
 
@@ -329,56 +342,72 @@ export function ReferralAgents() {
           action={!searchTerm ? { label: 'Add Your First Agent', onClick: openAddModal } : undefined}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredAgents.map((agent) => (
-            <div
-              key={agent.id}
-              className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3 text-left">
-                  <div className="bg-slate-100 p-2 rounded-lg">
-                    <UserCheck className="w-6 h-6 text-slate-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900">{agent.name}</h3>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 uppercase tracking-tight">
-                      {agent.type}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => openEditModal(agent)}
-                  className="p-1 hover:bg-slate-100 rounded transition"
-                >
-                  <Edit className="w-4 h-4 text-slate-600" />
-                </button>
-              </div>
-
-              <div className="space-y-2 text-sm text-left">
-                {agent.phone && (
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <span className="font-medium">Phone:</span>
-                    <span>{agent.phone}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-slate-600 text-left">
-                  <span className="font-medium">Commission Rate:</span>
-                  <span>{agent.commission_rate}%</span>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-slate-100">
-                <button
-                  onClick={() => openCommissionModal(agent)}
-                  className="w-full flex items-center justify-center gap-2 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition border border-slate-200"
-                >
-                  <DollarSign className="w-4 h-4 text-green-600" />
-                  Manage Commissions
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Agent</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Phone</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Commission Rate</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {paginatedAgents.map((agent) => (
+                  <tr key={agent.id} className="hover:bg-slate-50 transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-slate-100 p-2 rounded-lg shrink-0">
+                          <UserCheck className="w-4 h-4 text-slate-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{agent.name}</p>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 uppercase tracking-tight">
+                            {agent.type}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">
+                      {agent.phone || <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                      {agent.commission_rate}%
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEditModal(agent)}
+                          className="p-1.5 hover:bg-slate-100 rounded-lg transition text-slate-600 hover:text-slate-900"
+                          title="Edit Agent"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => openCommissionModal(agent)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium transition border border-slate-200"
+                        >
+                          <DollarSign className="w-3.5 h-3.5 text-green-600" />
+                          Manage Commissions
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-slate-500">
+              Showing {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredAgents.length)}–{Math.min(currentPage * PAGE_SIZE, filteredAgents.length)} of {filteredAgents.length} agents
+            </p>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         </div>
       )}
 
