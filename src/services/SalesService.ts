@@ -434,12 +434,22 @@ export class SalesService {
     async getTodaySales() {
         try {
             const sales = await this.saleRepo.findTodaySales();
+            const adapter = (this.saleRepo as any).adapter;
 
-            const totalAmount = sales.reduce((sum, sale) => sum + sale.total_amount, 0);
+            const today = new Date().toISOString().split('T')[0];
+            const todayItems: any[] = await adapter.query('sale_items', {
+                select: 'subtotal, is_manual, cost_price',
+                where: [{ field: 'created_at', operator: '>=', value: today }],
+            });
+
+            // Exclude pass-through manual items (is_manual=true, cost_price=0) from revenue
+            const revenue = todayItems
+                .filter(item => !(item.is_manual && Number(item.cost_price) === 0))
+                .reduce((sum, item) => sum + Number(item.subtotal), 0);
 
             return {
                 count: sales.length,
-                revenue: totalAmount,
+                revenue,
                 sales
             };
         } catch (error) {
@@ -483,34 +493,28 @@ export class SalesService {
             since.setDate(since.getDate() - days);
             const sinceStr = since.toISOString();
 
-            // Fetch sales for revenue
-            const sales: any[] = await adapter.query('sales', {
-                select: 'created_at, total_amount',
-                where: [{ field: 'created_at', operator: '>=', value: sinceStr }],
-                orderBy: [{ field: 'created_at', direction: 'asc' }],
-            });
-
-            // Fetch sale items for COGS
+            // Fetch sale items for both revenue and COGS
+            // is_manual + cost_price=0 means a pass-through item excluded from revenue
             const items: any[] = await adapter.query('sale_items', {
-                select: 'created_at, cost_price, quantity',
+                select: 'created_at, cost_price, quantity, subtotal, is_manual',
                 where: [{ field: 'created_at', operator: '>=', value: sinceStr }],
             });
 
-            // Group revenue by date
             const revenueMap = new Map<string, number>();
-            for (const s of sales) {
-                const day = new Date(s.created_at).toISOString().split('T')[0];
-                revenueMap.set(day, (revenueMap.get(day) || 0) + Number(s.total_amount));
-            }
-
-            // Group cost by date
             const costMap = new Map<string, number>();
+
             for (const item of items) {
                 const day = new Date(item.created_at).toISOString().split('T')[0];
-                costMap.set(day, (costMap.get(day) || 0) + Number(item.cost_price) * Number(item.quantity));
+                const isPassThrough = item.is_manual && Number(item.cost_price) === 0;
+
+                if (!isPassThrough) {
+                    revenueMap.set(day, (revenueMap.get(day) || 0) + Number(item.subtotal));
+                }
+                if (!item.is_manual) {
+                    costMap.set(day, (costMap.get(day) || 0) + Number(item.cost_price) * Number(item.quantity));
+                }
             }
 
-            // Merge into sorted daily array
             const allDays = Array.from(new Set([...revenueMap.keys(), ...costMap.keys()])).sort();
             return allDays.map(day => ({
                 date: day,

@@ -103,7 +103,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
 
   // Manual Item Modal State
   const [showManualItemModal, setShowManualItemModal] = useState(false);
-  const [manualItemForm, setManualItemForm] = useState({ description: '', price: 0, quantity: 1 });
+  const [manualItemForm, setManualItemForm] = useState({ description: '', price: 0, quantity: 1, cost: 0 });
 
   useEffect(() => {
     loadData();
@@ -351,7 +351,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
   }
 
   function addManualItem() {
-    const { description, price, quantity } = manualItemForm;
+    const { description, price, quantity, cost } = manualItemForm;
     if (!description.trim()) {
       showToast('Please enter a description', 'warning');
       return;
@@ -367,7 +367,8 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
 
     // Stub product & batch so CartItem shape is satisfied (these won't be saved to DB)
     const stubProduct: any = { id: `manual-${Date.now()}`, name: description, image_url: null };
-    const stubBatch: any = { id: `manual-batch-${Date.now()}`, batch_number: 'MANUAL', selling_price: price, cost_price: 0, current_quantity: 999999 };
+    // cost_price > 0 marks this item as a revenue-bearing item in analytics
+    const stubBatch: any = { id: `manual-batch-${Date.now()}`, batch_number: 'MANUAL', selling_price: price, cost_price: cost, current_quantity: 999999 };
 
     setCart([
       ...cart,
@@ -382,7 +383,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
       },
     ]);
 
-    setManualItemForm({ description: '', price: 0, quantity: 1 });
+    setManualItemForm({ description: '', price: 0, quantity: 1, cost: 0 });
     setShowManualItemModal(false);
     showToast(`'${description.trim()}' added to cart`, 'success');
   }
@@ -1001,7 +1002,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
 
               {/* Add Manual Item Button */}
               <button
-                onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1 }); setShowManualItemModal(true); }}
+                onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1, cost: 0 }); setShowManualItemModal(true); }}
                 className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition text-sm font-medium"
               >
                 <Tag className="w-4 h-4" />
@@ -1242,7 +1243,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
 
                 {/* Add Manual Item Button */}
                 <button
-                  onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1 }); setShowManualItemModal(true); }}
+                  onClick={() => { setManualItemForm({ description: '', price: 0, quantity: 1, cost: 0 }); setShowManualItemModal(true); }}
                   className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition text-sm font-medium"
                 >
                   <Tag className="w-4 h-4" />
@@ -1520,6 +1521,27 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Cost Price (LKR)
+                  <span className="ml-1 text-xs font-normal text-slate-400">— leave 0 to exclude from revenue</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={manualItemForm.cost === 0 ? '' : manualItemForm.cost}
+                  onChange={(e) => setManualItemForm({ ...manualItemForm, cost: parseFloat(e.target.value) || 0 })}
+                  onKeyDown={(e) => e.key === 'Enter' && addManualItem()}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none text-sm bg-white text-slate-900"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  {manualItemForm.cost > 0
+                    ? '✓ Will be counted as revenue'
+                    : 'Will not be counted as revenue'}
+                </p>
               </div>
               {manualItemForm.price > 0 && manualItemForm.quantity > 0 && (
                 <p className="text-sm text-slate-500">
