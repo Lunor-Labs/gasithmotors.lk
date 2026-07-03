@@ -90,6 +90,7 @@ export interface Database {
           active: boolean
           created_at: string
           updated_at: string
+          stock_depleted_at: string | null
         }
         Insert: {
           id?: string
@@ -104,6 +105,7 @@ export interface Database {
           active?: boolean
           created_at?: string
           updated_at?: string
+          stock_depleted_at?: string | null
         }
         Update: {
           id?: string
@@ -118,6 +120,7 @@ export interface Database {
           active?: boolean
           created_at?: string
           updated_at?: string
+          stock_depleted_at?: string | null
         }
       }
       product_batches: {
