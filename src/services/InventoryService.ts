@@ -46,6 +46,7 @@ export class InventoryService {
                 // Deduct stock
                 const newQuantity = batch.current_quantity - item.quantity;
                 await this.productRepo.updateStock(item.batch_id, newQuantity);
+                await this.checkAndMarkDepletion(batch.product_id);
 
                 logger.debug('Stock deducted', {
                     batchId: item.batch_id,
@@ -59,6 +60,26 @@ export class InventoryService {
         } catch (error) {
             logger.error('Failed to deduct stock', error as Error, { items });
             throw error;
+        }
+    }
+
+    /**
+     * If a product's total stock across all its batches has reached zero,
+     * stamp `stock_depleted_at` with the current time. Called after any
+     * stock mutation so the "Out of Stock" list can be sorted by most
+     * recent depletion.
+     */
+    async checkAndMarkDepletion(productId: string): Promise<void> {
+        const batches = await this.adapter.query<ProductBatch>('product_batches', {
+            where: [{ field: 'product_id', operator: '=', value: productId }],
+        });
+
+        const totalStock = batches.reduce((sum, b) => sum + b.current_quantity, 0);
+
+        if (totalStock === 0) {
+            await this.adapter.update('products', productId, {
+                stock_depleted_at: new Date().toISOString(),
+            });
         }
     }
 
@@ -83,6 +104,7 @@ export class InventoryService {
                 // Add stock
                 const newQuantity = batch.current_quantity + item.quantity;
                 await this.productRepo.updateStock(item.batch_id, newQuantity);
+                await this.checkAndMarkDepletion(batch.product_id);
 
                 logger.debug('Stock added', {
                     batchId: item.batch_id,
@@ -126,6 +148,7 @@ export class InventoryService {
 
                 // Update stock
                 await this.productRepo.updateStock(adjustment.batchId, adjustment.quantity);
+                await this.checkAndMarkDepletion(batch.product_id);
 
                 logger.info('Stock adjusted', {
                     batchId: adjustment.batchId,
