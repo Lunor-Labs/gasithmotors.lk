@@ -26,6 +26,7 @@ import { Pagination } from './ui';
 import { salesService, customerService, productService } from '../services'; // Import services
 import { logger } from '../lib/logger';
 import { playScannerBeep } from '../utils/audio';
+import { applyOfflineDeduction } from '../utils/offlineStock';
 
 export function POS({ isActive = true }: { isActive?: boolean }) {
   const { profile } = useAuth();
@@ -630,10 +631,8 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
         for (const item of cart.filter(i => !i.isManual)) {
           const product = await db.products.get(item.product.id);
           if (product) {
-            const updatedBatches = product.batches.map(b =>
-              b.id === item.batch.id ? { ...b, current_quantity: b.current_quantity - item.quantity } : b
-            );
-            await db.products.update(item.product.id, { batches: updatedBatches });
+            const update = applyOfflineDeduction(product, item.batch.id, item.quantity);
+            await db.products.update(item.product.id, { ...update });
           }
         }
 
