@@ -606,6 +606,7 @@ export function POS({ isActive = true }: { isActive?: boolean }) {
           })),
           batches: cart.filter(i => !i.isManual).map(item => ({
             id: item.batch.id,
+            product_id: item.product.id,
             newQuantity: item.batch.current_quantity - item.quantity
           })),
           customerCredit: (paymentMethod === 'credit' && selectedCustomer && creditAmount > 0) ? {

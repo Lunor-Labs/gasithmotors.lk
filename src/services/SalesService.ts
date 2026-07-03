@@ -634,6 +634,9 @@ export class SalesService {
             if (batches && Array.isArray(batches)) {
                 for (const b of batches) {
                     await this.productRepo.updateStock(b.id, b.newQuantity);
+                    if (b.product_id) {
+                        await this.inventoryRepo.checkAndMarkDepletion(b.product_id);
+                    }
                 }
             }
 
