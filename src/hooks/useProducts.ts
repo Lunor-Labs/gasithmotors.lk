@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { productService } from '../services';
 import { logger } from '../lib/logger';
 import { expandSearchTerm } from '../utils/searchUtils';
+import { compareOutOfStock } from '../utils/productSort';
 
 export type SearchType = 'all' | 'name' | 'sku' | 'barcode';
 export type StockFilter = 'all' | 'low_stock' | 'out_of_stock';
@@ -168,9 +169,13 @@ export function useProducts(
         allProducts.sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true, sensitivity: 'base' }));
         data = allProducts.slice(offset, offset + pageSize);
       } else {
-        // Filtered path: Fetch all filtered items and sort in memory natural order
+        // Filtered path: Fetch all filtered items and sort in memory
         const allFiltered = await collection.toArray();
-        allFiltered.sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true, sensitivity: 'base' }));
+        if (stockFilter === 'out_of_stock') {
+          allFiltered.sort(compareOutOfStock);
+        } else {
+          allFiltered.sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true, sensitivity: 'base' }));
+        }
         data = allFiltered.slice(offset, offset + pageSize);
       }
 
