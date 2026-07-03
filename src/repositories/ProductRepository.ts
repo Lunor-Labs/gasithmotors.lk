@@ -53,7 +53,13 @@ export class ProductRepository extends BaseRepository<Product> {
         while (hasMoreBatches) {
             const chunk = await this.adapter.query<ProductBatch>('product_batches', {
                 select: '*, supplier:suppliers(name)', // Join supplier information
-                orderBy: [{ field: 'received_date', direction: 'desc' }],
+                // `id` breaks ties on received_date so pagination across
+                // multiple requests is deterministic; otherwise batches can
+                // be silently dropped or duplicated at chunk boundaries.
+                orderBy: [
+                    { field: 'received_date', direction: 'desc' },
+                    { field: 'id', direction: 'asc' },
+                ],
                 offset: fromBatch,
                 limit: CHUNK_SIZE,
             });
