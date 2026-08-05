@@ -120,11 +120,15 @@ export class SupabaseAdapter implements DatabaseAdapter {
     private applyWhereClause(query: any, clause: WhereClause): any {
         const { field, operator, value } = clause;
 
+        // PostgREST renders eq/neq with a null value as `field=eq.null`, which Postgres
+        // rejects for typed columns (uuid, int) with a 400. Use IS NULL semantics instead.
+        const isNullish = value === null || value === undefined;
+
         switch (operator) {
             case '=':
-                return query.eq(field, value);
+                return isNullish ? query.is(field, null) : query.eq(field, value);
             case '!=':
-                return query.neq(field, value);
+                return isNullish ? query.not(field, 'is', null) : query.neq(field, value);
             case '>':
                 return query.gt(field, value);
             case '<':
