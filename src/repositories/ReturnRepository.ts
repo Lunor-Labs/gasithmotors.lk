@@ -20,50 +20,20 @@ export class ReturnRepository extends BaseRepository<Return> {
      * Find all returns with child items and customer details
      */
     async findAllWithDetails(): Promise<ReturnWithDetails[]> {
-        const returns = await this.findAll();
-
-        return Promise.all(returns.map(async (returnRecord) => {
-            const [customer, sale, items] = await Promise.all([
-                returnRecord.customer_id
-                    ? this.adapter.query<Customer>('customers', {
-                        where: [{ field: 'id', operator: '=', value: returnRecord.customer_id }]
-                    }).then(res => res[0] || null)
-                    : Promise.resolve(null),
-                returnRecord.sale_id
-                    ? this.adapter.query<Sale>('sales', {
-                        where: [{ field: 'id', operator: '=', value: returnRecord.sale_id }]
-                    }).then(res => res[0] || null)
-                    : Promise.resolve(null),
-                this.findItemsByReturnId(returnRecord.id)
-            ]);
-
-            return {
-                ...returnRecord,
-                customer,
-                sale,
-                items
-            };
-        }));
+        return this.query({
+            select: '*, customer:customers(*), sale:sales(*), items:return_items(*, product:products(*))'
+        }) as Promise<ReturnWithDetails[]>;
     }
 
     /**
-     * Find items for a specific return with product details
+     * Find items for a specific return with product details.
+     * Manual line items have no product_id, so product comes back null.
      */
     async findItemsByReturnId(returnId: string): Promise<(ReturnItem & { product: Product | null })[]> {
-        const items = await this.adapter.query<ReturnItem>('return_items', {
+        return this.adapter.query<ReturnItem & { product: Product | null }>('return_items', {
+            select: '*, product:products(*)',
             where: [{ field: 'return_id', operator: '=', value: returnId }]
         });
-
-        return Promise.all(items.map(async (item) => {
-            const product = await this.adapter.query<Product>('products', {
-                where: [{ field: 'id', operator: '=', value: item.product_id }]
-            }).then(res => res[0] || null);
-
-            return {
-                ...item,
-                product
-            };
-        }));
     }
 
     /**
@@ -78,9 +48,11 @@ export class ReturnRepository extends BaseRepository<Return> {
                 return_id: returnRecord.id
             });
 
-            const product = await this.adapter.query<Product>('products', {
-                where: [{ field: 'id', operator: '=', value: createdItem.product_id }]
-            }).then(res => res[0] || null);
+            const product = createdItem.product_id
+                ? await this.adapter.query<Product>('products', {
+                    where: [{ field: 'id', operator: '=', value: createdItem.product_id }]
+                }).then(res => res[0] || null)
+                : null;
 
             return {
                 ...createdItem,
