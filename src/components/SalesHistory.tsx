@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Database } from '../lib/database.types';
 import { Invoice, InvoiceData } from './Invoice';
-import { Eye, FileText, Trash2, Clock } from 'lucide-react';
+import { Eye, FileText, Trash2, Clock, DollarSign } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { salesService, customerService } from '../services';
@@ -60,8 +60,12 @@ export function SalesHistory() {
     const [showInvoice, setShowInvoice] = useState(false);
     const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
 
-    // Referral Commission State
+    // Referral Commission State (separate modal, opened directly from the sales list)
     const [referralAgents, setReferralAgents] = useState<ReferralAgent[]>([]);
+    const [showCommissionModal, setShowCommissionModal] = useState(false);
+    const [commissionSale, setCommissionSale] = useState<Sale | null>(null);
+    const [commissionSaleItems, setCommissionSaleItems] = useState<SaleItem[]>([]);
+    const [loadingCommissionItems, setLoadingCommissionItems] = useState(false);
     const [commissionStatus, setCommissionStatus] = useState<CommissionStatus | null>(null);
     const [loadingCommissionStatus, setLoadingCommissionStatus] = useState(false);
     const [selectedAgentId, setSelectedAgentId] = useState('');
@@ -101,13 +105,29 @@ export function SalesHistory() {
         setSelectedSale(sale);
         setShowModal(true);
         setLoadingItems(true);
+
+        try {
+            const data = await salesService.getSaleItems(sale.id);
+            setSaleItems(data);
+        } catch (error) {
+            console.error('Error loading sale items:', error);
+            showToast('Failed to load sale details', 'error');
+        } finally {
+            setLoadingItems(false);
+        }
+    }
+
+    async function openCommissionModal(sale: Sale) {
+        setCommissionSale(sale);
+        setShowCommissionModal(true);
+        setLoadingCommissionItems(true);
         setCommissionStatus(null);
         setSelectedAgentId(sale.referral_agent_id || '');
         setItemCommissions({});
 
         try {
             const data = await salesService.getSaleItems(sale.id);
-            setSaleItems(data);
+            setCommissionSaleItems(data);
 
             const initialCommissions: Record<string, ItemCommissionInput> = {};
             data.forEach((item: SaleItem) => {
@@ -120,17 +140,15 @@ export function SalesHistory() {
             });
             setItemCommissions(initialCommissions);
 
-            if (isAdmin) {
-                setLoadingCommissionStatus(true);
-                const status = await salesService.getSaleCommissionStatus(sale.id);
-                setCommissionStatus(status);
-                setLoadingCommissionStatus(false);
-            }
+            setLoadingCommissionStatus(true);
+            const status = await salesService.getSaleCommissionStatus(sale.id);
+            setCommissionStatus(status);
+            setLoadingCommissionStatus(false);
         } catch (error) {
-            console.error('Error loading sale items:', error);
-            showToast('Failed to load sale details', 'error');
+            console.error('Error loading commission details:', error);
+            showToast('Failed to load commission details', 'error');
         } finally {
-            setLoadingItems(false);
+            setLoadingCommissionItems(false);
         }
     }
 
@@ -159,8 +177,8 @@ export function SalesHistory() {
     }
 
     async function handleSaveCommissions() {
-        if (!selectedSale) return;
-        const agentId = selectedSale.referral_agent_id || selectedAgentId;
+        if (!commissionSale) return;
+        const agentId = commissionSale.referral_agent_id || selectedAgentId;
         if (!agentId) {
             showToast('Please select a referral agent first', 'warning');
             return;
@@ -168,7 +186,7 @@ export function SalesHistory() {
 
         setSavingCommissions(true);
         try {
-            const items = saleItems.map(item => {
+            const items = commissionSaleItems.map(item => {
                 const entry = itemCommissions[item.id];
                 const rate = entry?.rate ? parseFloat(entry.rate) : null;
                 const amount = entry?.amount ? parseFloat(entry.amount) : null;
@@ -180,13 +198,14 @@ export function SalesHistory() {
                 };
             });
 
-            await salesService.setItemCommissions(selectedSale.id, agentId, items);
+            await salesService.setItemCommissions(commissionSale.id, agentId, items);
             showToast('Referral commissions saved', 'success');
 
-            const status = await salesService.getSaleCommissionStatus(selectedSale.id);
+            const status = await salesService.getSaleCommissionStatus(commissionSale.id);
             setCommissionStatus(status);
-            if (!selectedSale.referral_agent_id) {
-                setSelectedSale({ ...selectedSale, referral_agent_id: agentId });
+            if (!commissionSale.referral_agent_id) {
+                setCommissionSale({ ...commissionSale, referral_agent_id: agentId });
+                setSales(prev => prev.map(s => s.id === commissionSale.id ? { ...s, referral_agent_id: agentId } : s));
             }
         } catch (error: any) {
             showToast(error.message || 'Failed to save commissions', 'error');
@@ -363,6 +382,16 @@ export function SalesHistory() {
                                     </button>
                                     {isAdmin && (
                                         <button
+                                            onClick={() => openCommissionModal(sale)}
+                                            className="flex-1 py-2 px-3 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition flex items-center justify-center gap-2 text-xs font-medium"
+                                            title="Set Referral Commission"
+                                        >
+                                            <DollarSign className="w-4 h-4 text-green-600" />
+                                            Commission
+                                        </button>
+                                    )}
+                                    {isAdmin && (
+                                        <button
                                             onClick={() => handleDeleteClick(sale.id)}
                                             disabled={deletingId === sale.id}
                                             className="flex-1 py-2 px-3 border border-red-300 bg-white text-red-600 rounded-lg hover:bg-red-50 transition flex items-center justify-center gap-2 text-xs font-medium disabled:opacity-50"
@@ -430,6 +459,15 @@ export function SalesHistory() {
                                                 >
                                                     <Eye className="w-5 h-5" />
                                                 </button>
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => openCommissionModal(sale)}
+                                                        className="p-1.5 hover:bg-slate-100 rounded-lg transition text-green-600 hover:text-green-700"
+                                                        title="Set Referral Commission"
+                                                    >
+                                                        <DollarSign className="w-5 h-5" />
+                                                    </button>
+                                                )}
                                                 {isAdmin && (
                                                     <button
                                                         onClick={() => handleDeleteClick(sale.id)}
@@ -596,103 +634,6 @@ export function SalesHistory() {
                             </table>
                         </div>
 
-                        {isAdmin && (
-                            <div className="mb-6 border border-slate-200 rounded-lg p-4 text-left">
-                                <h4 className="font-bold text-slate-900 mb-3">Referral Commission</h4>
-                                {loadingCommissionStatus ? (
-                                    <p className="text-sm text-slate-500">Loading commission info...</p>
-                                ) : commissionStatus?.locked ? (
-                                    <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
-                                        Commission of LKR{' '}
-                                        {(commissionStatus.commissions.find(c => c.status === 'paid')?.commission_amount || 0).toFixed(2)}{' '}
-                                        has already been paid out for this sale and can no longer be edited.
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        {!selectedSale.referral_agent_id && (
-                                            <div>
-                                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                    Referral Agent
-                                                </label>
-                                                <select
-                                                    value={selectedAgentId}
-                                                    onChange={(e) => setSelectedAgentId(e.target.value)}
-                                                    className="w-full md:w-72 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none"
-                                                >
-                                                    <option value="">Select an agent...</option>
-                                                    {referralAgents.map((agent) => (
-                                                        <option key={agent.id} value={agent.id}>{agent.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
-
-                                        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                                            <table className="w-full">
-                                                <thead className="bg-slate-50 border-b border-slate-200">
-                                                    <tr>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Item</th>
-                                                        <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Rate %</th>
-                                                        <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount (LKR)</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-200">
-                                                    {saleItems.map((item) => (
-                                                        <tr key={item.id}>
-                                                            <td className="px-4 py-2 text-sm text-slate-900 text-left">
-                                                                {item.is_manual ? (item.manual_description || 'Manual Item') : (item.product?.name || 'Unknown Item')}
-                                                            </td>
-                                                            <td className="px-4 py-2 text-right">
-                                                                <input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    step="0.01"
-                                                                    value={itemCommissions[item.id]?.rate ?? ''}
-                                                                    onChange={(e) => handleCommissionRateChange(item.id, e.target.value, item.subtotal)}
-                                                                    className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right focus:ring-2 focus:ring-slate-900 outline-none"
-                                                                    placeholder="0.00"
-                                                                />
-                                                            </td>
-                                                            <td className="px-4 py-2 text-right">
-                                                                <input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    step="0.01"
-                                                                    value={itemCommissions[item.id]?.amount ?? ''}
-                                                                    onChange={(e) => handleCommissionAmountChange(item.id, e.target.value, item.subtotal)}
-                                                                    className="w-28 px-2 py-1 border border-slate-300 rounded-lg text-right focus:ring-2 focus:ring-slate-900 outline-none"
-                                                                    placeholder="0.00"
-                                                                />
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                                <tfoot className="bg-slate-50 font-bold">
-                                                    <tr>
-                                                        <td className="px-4 py-2 text-right text-slate-900">Total Commission:</td>
-                                                        <td></td>
-                                                        <td className="px-4 py-2 text-right text-slate-900">
-                                                            LKR {Object.values(itemCommissions).reduce((sum, v) => sum + (parseFloat(v.amount) || 0), 0).toFixed(2)}
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-
-                                        <div className="flex justify-end">
-                                            <button
-                                                onClick={handleSaveCommissions}
-                                                disabled={savingCommissions}
-                                                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium text-sm disabled:opacity-50"
-                                            >
-                                                {savingCommissions ? 'Saving...' : 'Save Commissions'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         <div className="flex flex-col md:flex-row justify-between gap-3 md:gap-4 mt-6">
                             <button
                                 onClick={handleGenerateInvoice}
@@ -745,6 +686,116 @@ export function SalesHistory() {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* Set Referral Commission Modal */}
+            <Modal
+                isOpen={showCommissionModal}
+                onClose={() => setShowCommissionModal(false)}
+                title={commissionSale ? `Referral Commission: ${commissionSale.sale_number}` : 'Referral Commission'}
+                size="2xl"
+            >
+                {commissionSale && (
+                    <div className="p-4 md:p-6 text-left">
+                        {loadingCommissionItems || loadingCommissionStatus ? (
+                            <p className="text-sm text-slate-500 py-8 text-center">Loading commission info...</p>
+                        ) : commissionStatus?.locked ? (
+                            <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-600">
+                                Commission of LKR{' '}
+                                {(commissionStatus.commissions.find(c => c.status === 'paid')?.commission_amount || 0).toFixed(2)}{' '}
+                                has already been paid out for this sale and can no longer be edited.
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {!commissionSale.referral_agent_id && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                                            Referral Agent
+                                        </label>
+                                        <select
+                                            value={selectedAgentId}
+                                            onChange={(e) => setSelectedAgentId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none"
+                                        >
+                                            <option value="">Select an agent...</option>
+                                            {referralAgents.map((agent) => (
+                                                <option key={agent.id} value={agent.id}>{agent.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                    <table className="w-full">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                            <tr>
+                                                <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Item</th>
+                                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Rate %</th>
+                                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount (LKR)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {commissionSaleItems.map((item) => (
+                                                <tr key={item.id}>
+                                                    <td className="px-4 py-2 text-sm text-slate-900 text-left">
+                                                        {item.is_manual ? (item.manual_description || 'Manual Item') : (item.product?.name || 'Unknown Item')}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={itemCommissions[item.id]?.rate ?? ''}
+                                                            onChange={(e) => handleCommissionRateChange(item.id, e.target.value, item.subtotal)}
+                                                            className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right focus:ring-2 focus:ring-slate-900 outline-none"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={itemCommissions[item.id]?.amount ?? ''}
+                                                            onChange={(e) => handleCommissionAmountChange(item.id, e.target.value, item.subtotal)}
+                                                            className="w-28 px-2 py-1 border border-slate-300 rounded-lg text-right focus:ring-2 focus:ring-slate-900 outline-none"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-slate-50 font-bold">
+                                            <tr>
+                                                <td className="px-4 py-2 text-right text-slate-900">Total Commission:</td>
+                                                <td></td>
+                                                <td className="px-4 py-2 text-right text-slate-900">
+                                                    LKR {Object.values(itemCommissions).reduce((sum, v) => sum + (parseFloat(v.amount) || 0), 0).toFixed(2)}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        onClick={() => setShowCommissionModal(false)}
+                                        className="px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium text-sm"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSaveCommissions}
+                                        disabled={savingCommissions}
+                                        className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium text-sm disabled:opacity-50"
+                                    >
+                                        {savingCommissions ? 'Saving...' : 'Save Commissions'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </Modal>
 
             {/* Invoice Component */}
