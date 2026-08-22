@@ -309,6 +309,59 @@ export class SaleRepository extends BaseRepository<Sale> {
     }
 
     /**
+     * Find commissions for a sale
+     */
+    async findCommissionsBySaleId(saleId: string): Promise<any[]> {
+        const client = (this.adapter as any).getClient();
+        const { data, error } = await client
+            .from('referral_commissions')
+            .select('*')
+            .eq('sale_id', saleId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    }
+
+    /**
+     * Update an existing referral commission
+     */
+    async updateCommission(id: string, data: {
+        commission_rate: number;
+        sale_amount: number;
+        commission_amount: number;
+    }): Promise<void> {
+        const client = (this.adapter as any).getClient();
+        const { error } = await client
+            .from('referral_commissions')
+            .update({
+                ...data,
+                updated_at: new Date().toISOString(),
+            } as any)
+            .eq('id', id);
+
+        if (error) throw error;
+    }
+
+    /**
+     * Bulk update per-item referral commissions
+     */
+    async updateItemCommissions(items: {
+        id: string;
+        referral_commission_rate: number | null;
+        referral_commission_amount: number | null;
+    }[]): Promise<void> {
+        await Promise.all(
+            items.map(item =>
+                this.adapter.update('sale_items', item.id, {
+                    referral_commission_rate: item.referral_commission_rate,
+                    referral_commission_amount: item.referral_commission_amount,
+                } as any)
+            )
+        );
+    }
+
+    /**
      * Payout commissions
      */
     async payoutCommissions(ids: string[]): Promise<void> {

@@ -4,7 +4,7 @@ import { Invoice, InvoiceData } from './Invoice';
 import { Eye, FileText, Trash2, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { salesService } from '../services';
+import { salesService, customerService } from '../services';
 import { Modal, SearchBar, LoadingSpinner, EmptyState, Pagination } from './ui';
 
 type Sale = Database['public']['Tables']['sales']['Row'] & {
@@ -18,7 +18,21 @@ type SaleItem = Database['public']['Tables']['sale_items']['Row'] & {
     warranty_duration?: number;
     warranty_unit?: 'days' | 'months' | 'years' | null;
     warranty_type?: string | null;
+    referral_commission_rate?: number | null;
+    referral_commission_amount?: number | null;
 };
+
+type ReferralAgent = Database['public']['Tables']['referral_agents']['Row'];
+
+interface CommissionStatus {
+    locked: boolean;
+    commissions: Array<{ id: string; status: string; commission_amount: number; payment_date: string | null }>;
+}
+
+interface ItemCommissionInput {
+    rate: string;
+    amount: string;
+}
 
 export function SalesHistory() {
     const { isAdmin } = useAuth();
@@ -46,9 +60,25 @@ export function SalesHistory() {
     const [showInvoice, setShowInvoice] = useState(false);
     const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
 
+    // Referral Commission State
+    const [referralAgents, setReferralAgents] = useState<ReferralAgent[]>([]);
+    const [commissionStatus, setCommissionStatus] = useState<CommissionStatus | null>(null);
+    const [loadingCommissionStatus, setLoadingCommissionStatus] = useState(false);
+    const [selectedAgentId, setSelectedAgentId] = useState('');
+    const [itemCommissions, setItemCommissions] = useState<Record<string, ItemCommissionInput>>({});
+    const [savingCommissions, setSavingCommissions] = useState(false);
+
     useEffect(() => {
         loadSales();
     }, [dateRange]);
+
+    useEffect(() => {
+        if (isAdmin) {
+            customerService.getAllReferralAgents()
+                .then((data: any) => setReferralAgents(data || []))
+                .catch(() => setReferralAgents([]));
+        }
+    }, [isAdmin]);
 
     async function loadSales() {
         setLoading(true);
@@ -71,15 +101,97 @@ export function SalesHistory() {
         setSelectedSale(sale);
         setShowModal(true);
         setLoadingItems(true);
+        setCommissionStatus(null);
+        setSelectedAgentId(sale.referral_agent_id || '');
+        setItemCommissions({});
 
         try {
             const data = await salesService.getSaleItems(sale.id);
             setSaleItems(data);
+
+            const initialCommissions: Record<string, ItemCommissionInput> = {};
+            data.forEach((item: SaleItem) => {
+                if (item.referral_commission_rate != null || item.referral_commission_amount != null) {
+                    initialCommissions[item.id] = {
+                        rate: item.referral_commission_rate != null ? String(item.referral_commission_rate) : '',
+                        amount: item.referral_commission_amount != null ? String(item.referral_commission_amount) : '',
+                    };
+                }
+            });
+            setItemCommissions(initialCommissions);
+
+            if (isAdmin) {
+                setLoadingCommissionStatus(true);
+                const status = await salesService.getSaleCommissionStatus(sale.id);
+                setCommissionStatus(status);
+                setLoadingCommissionStatus(false);
+            }
         } catch (error) {
             console.error('Error loading sale items:', error);
             showToast('Failed to load sale details', 'error');
         } finally {
             setLoadingItems(false);
+        }
+    }
+
+    function handleCommissionRateChange(itemId: string, value: string, subtotal: number) {
+        const rate = parseFloat(value);
+        const amount = !isNaN(rate) ? (subtotal * rate) / 100 : NaN;
+        setItemCommissions(prev => ({
+            ...prev,
+            [itemId]: {
+                rate: value,
+                amount: !isNaN(amount) ? amount.toFixed(2) : '',
+            },
+        }));
+    }
+
+    function handleCommissionAmountChange(itemId: string, value: string, subtotal: number) {
+        const amount = parseFloat(value);
+        const rate = !isNaN(amount) && subtotal > 0 ? (amount / subtotal) * 100 : NaN;
+        setItemCommissions(prev => ({
+            ...prev,
+            [itemId]: {
+                rate: !isNaN(rate) ? rate.toFixed(2) : '',
+                amount: value,
+            },
+        }));
+    }
+
+    async function handleSaveCommissions() {
+        if (!selectedSale) return;
+        const agentId = selectedSale.referral_agent_id || selectedAgentId;
+        if (!agentId) {
+            showToast('Please select a referral agent first', 'warning');
+            return;
+        }
+
+        setSavingCommissions(true);
+        try {
+            const items = saleItems.map(item => {
+                const entry = itemCommissions[item.id];
+                const rate = entry?.rate ? parseFloat(entry.rate) : null;
+                const amount = entry?.amount ? parseFloat(entry.amount) : null;
+                return {
+                    itemId: item.id,
+                    subtotal: item.subtotal,
+                    commission_rate: rate !== null && !isNaN(rate) ? rate : null,
+                    commission_amount: amount !== null && !isNaN(amount) ? amount : null,
+                };
+            });
+
+            await salesService.setItemCommissions(selectedSale.id, agentId, items);
+            showToast('Referral commissions saved', 'success');
+
+            const status = await salesService.getSaleCommissionStatus(selectedSale.id);
+            setCommissionStatus(status);
+            if (!selectedSale.referral_agent_id) {
+                setSelectedSale({ ...selectedSale, referral_agent_id: agentId });
+            }
+        } catch (error: any) {
+            showToast(error.message || 'Failed to save commissions', 'error');
+        } finally {
+            setSavingCommissions(false);
         }
     }
 
@@ -483,6 +595,103 @@ export function SalesHistory() {
                                 </tfoot>
                             </table>
                         </div>
+
+                        {isAdmin && (
+                            <div className="mb-6 border border-slate-200 rounded-lg p-4 text-left">
+                                <h4 className="font-bold text-slate-900 mb-3">Referral Commission</h4>
+                                {loadingCommissionStatus ? (
+                                    <p className="text-sm text-slate-500">Loading commission info...</p>
+                                ) : commissionStatus?.locked ? (
+                                    <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
+                                        Commission of LKR{' '}
+                                        {(commissionStatus.commissions.find(c => c.status === 'paid')?.commission_amount || 0).toFixed(2)}{' '}
+                                        has already been paid out for this sale and can no longer be edited.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {!selectedSale.referral_agent_id && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                                    Referral Agent
+                                                </label>
+                                                <select
+                                                    value={selectedAgentId}
+                                                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                                                    className="w-full md:w-72 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none"
+                                                >
+                                                    <option value="">Select an agent...</option>
+                                                    {referralAgents.map((agent) => (
+                                                        <option key={agent.id} value={agent.id}>{agent.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                            <table className="w-full">
+                                                <thead className="bg-slate-50 border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Item</th>
+                                                        <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Rate %</th>
+                                                        <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount (LKR)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {saleItems.map((item) => (
+                                                        <tr key={item.id}>
+                                                            <td className="px-4 py-2 text-sm text-slate-900 text-left">
+                                                                {item.is_manual ? (item.manual_description || 'Manual Item') : (item.product?.name || 'Unknown Item')}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={itemCommissions[item.id]?.rate ?? ''}
+                                                                    onChange={(e) => handleCommissionRateChange(item.id, e.target.value, item.subtotal)}
+                                                                    className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-right focus:ring-2 focus:ring-slate-900 outline-none"
+                                                                    placeholder="0.00"
+                                                                />
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={itemCommissions[item.id]?.amount ?? ''}
+                                                                    onChange={(e) => handleCommissionAmountChange(item.id, e.target.value, item.subtotal)}
+                                                                    className="w-28 px-2 py-1 border border-slate-300 rounded-lg text-right focus:ring-2 focus:ring-slate-900 outline-none"
+                                                                    placeholder="0.00"
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                <tfoot className="bg-slate-50 font-bold">
+                                                    <tr>
+                                                        <td className="px-4 py-2 text-right text-slate-900">Total Commission:</td>
+                                                        <td></td>
+                                                        <td className="px-4 py-2 text-right text-slate-900">
+                                                            LKR {Object.values(itemCommissions).reduce((sum, v) => sum + (parseFloat(v.amount) || 0), 0).toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+
+                                        <div className="flex justify-end">
+                                            <button
+                                                onClick={handleSaveCommissions}
+                                                disabled={savingCommissions}
+                                                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-medium text-sm disabled:opacity-50"
+                                            >
+                                                {savingCommissions ? 'Saving...' : 'Save Commissions'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex flex-col md:flex-row justify-between gap-3 md:gap-4 mt-6">
                             <button

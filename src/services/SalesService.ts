@@ -743,4 +743,92 @@ export class SalesService {
             throw error;
         }
     }
+
+    /**
+     * Get the commission status for a sale (used to detect a locked/paid commission)
+     */
+    async getSaleCommissionStatus(saleId: string) {
+        try {
+            const commissions = await this.saleRepo.findCommissionsBySaleId(saleId);
+            return {
+                locked: commissions.some((c: any) => c.status === 'paid'),
+                commissions,
+            };
+        } catch (error) {
+            logger.error('Failed to fetch sale commission status', error as Error, { saleId });
+            throw new Error('Unable to load commission status');
+        }
+    }
+
+    /**
+     * Manually set referral commissions per sale item
+     */
+    async setItemCommissions(
+        saleId: string,
+        referralAgentId: string,
+        items: Array<{
+            itemId: string;
+            subtotal: number;
+            commission_rate: number | null;
+            commission_amount: number | null;
+        }>
+    ): Promise<void> {
+        try {
+            const existingCommissions = await this.saleRepo.findCommissionsBySaleId(saleId);
+            if (existingCommissions.some((c: any) => c.status === 'paid')) {
+                throw new Error('Commission already paid out for this sale.');
+            }
+
+            const resolvedItems = items.map(item => {
+                let rate = item.commission_rate;
+                let amount = item.commission_amount;
+
+                if (amount === null && rate !== null) {
+                    amount = (item.subtotal * rate) / 100;
+                } else if (rate === null && amount !== null) {
+                    rate = item.subtotal > 0 ? (amount / item.subtotal) * 100 : 0;
+                }
+
+                return {
+                    id: item.itemId,
+                    referral_commission_rate: rate !== null ? Math.round(rate * 100) / 100 : null,
+                    referral_commission_amount: amount !== null ? Math.round(amount * 100) / 100 : null,
+                };
+            });
+
+            await this.saleRepo.updateItemCommissions(resolvedItems);
+
+            const totalCommission = resolvedItems.reduce((sum, i) => sum + (i.referral_commission_amount || 0), 0);
+            const saleAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
+            const blendedRate = saleAmount > 0 ? (totalCommission / saleAmount) * 100 : 0;
+
+            const existingPending = existingCommissions.find((c: any) => c.status === 'pending');
+
+            if (existingPending) {
+                await this.saleRepo.updateCommission(existingPending.id, {
+                    commission_rate: Math.round(blendedRate * 100) / 100,
+                    sale_amount: saleAmount,
+                    commission_amount: totalCommission,
+                });
+            } else {
+                await this.saleRepo.createCommission({
+                    referral_agent_id: referralAgentId,
+                    sale_id: saleId,
+                    commission_amount: totalCommission,
+                    commission_rate: Math.round(blendedRate * 100) / 100,
+                    sale_amount: saleAmount,
+                });
+            }
+
+            const sale = await this.saleRepo.findById(saleId);
+            if (sale && !sale.referral_agent_id) {
+                await this.saleRepo.update(saleId, { referral_agent_id: referralAgentId } as Partial<Sale>);
+            }
+
+            logger.info('Item-level referral commissions set', { saleId, totalCommission });
+        } catch (error) {
+            logger.error('Failed to set item commissions', error as Error, { saleId });
+            throw error;
+        }
+    }
 }

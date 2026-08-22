@@ -15,6 +15,8 @@ export type SaleItem = Database['public']['Tables']['sale_items']['Row'] & {
   warranty_type?: string | null;
   is_manual?: boolean;
   manual_description?: string | null;
+  referral_commission_rate?: number | null;
+  referral_commission_amount?: number | null;
 };
 export type Return = Database['public']['Tables']['returns']['Row'];
 export type ReturnItem = Database['public']['Tables']['return_items']['Row'];

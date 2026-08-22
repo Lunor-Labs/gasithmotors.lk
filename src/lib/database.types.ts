@@ -401,6 +401,8 @@ export interface Database {
           warranty_duration: number | null
           warranty_unit: string | null
           warranty_type: string | null
+          referral_commission_rate: number | null
+          referral_commission_amount: number | null
           created_at: string
         }
         Insert: {
@@ -418,6 +420,8 @@ export interface Database {
           warranty_duration?: number | null
           warranty_unit?: string | null
           warranty_type?: string | null
+          referral_commission_rate?: number | null
+          referral_commission_amount?: number | null
           created_at?: string
         }
         Update: {
@@ -435,6 +439,8 @@ export interface Database {
           warranty_duration?: number | null
           warranty_unit?: string | null
           warranty_type?: string | null
+          referral_commission_rate?: number | null
+          referral_commission_amount?: number | null
           created_at?: string
         }
       }
