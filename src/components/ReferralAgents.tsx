@@ -54,6 +54,7 @@ export function ReferralAgents() {
 
   const [showConfirmPayoutModal, setShowConfirmPayoutModal] = useState(false);
   const [commissionsToPayout, setCommissionsToPayout] = useState<Commission[]>([]);
+  const [selectedCommissionIds, setSelectedCommissionIds] = useState<Set<string>>(new Set());
 
   // Invoice State
   const [showInvoice, setShowInvoice] = useState(false);
@@ -84,6 +85,7 @@ export function ReferralAgents() {
 
   async function loadCommissions(agentId: string) {
     setLoadingCommissions(true);
+    setSelectedCommissionIds(new Set());
     try {
       const data = await salesService.getCommissionsByAgent(agentId);
 
@@ -100,6 +102,24 @@ export function ReferralAgents() {
     } finally {
       setLoadingCommissions(false);
     }
+  }
+
+  function toggleCommissionSelected(id: string) {
+    setSelectedCommissionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllPending(pending: Commission[]) {
+    setSelectedCommissionIds(prev =>
+      prev.size === pending.length ? new Set() : new Set(pending.map(c => c.id))
+    );
   }
 
   async function handlePayout(filteredCommissions: Commission[]) {
@@ -512,55 +532,88 @@ export function ReferralAgents() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <div className="flex justify-between items-center mb-4">
-                          <h4 className="font-semibold text-slate-900">Total Pending: LKR {commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + c.commission_amount, 0).toFixed(2)}</h4>
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <button
-                              onClick={() => handlePayout(commissions.filter(c => c.status === 'pending'))}
-                              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-sm"
-                            >
-                              <DollarSign className="w-4 h-4" />
-                              Payout All Pending
-                            </button>
-                          </div>
-                        </div>
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
-                          <table className="w-full">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Date</th>
-                                <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Sale #</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Sale Amount</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Commission</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200 text-left">
-                              {commissions.filter(c => c.status === 'pending').map((c) => (
-                                <tr key={c.id}>
-                                  <td className="px-4 py-3 text-sm text-slate-600 text-left">{new Date(c.created_at).toLocaleDateString()}</td>
-                                  <td className="px-4 py-3 text-sm font-medium text-slate-900 text-left">{c.sale?.sale_number}</td>
-                                  <td className="px-4 py-3 text-sm text-slate-600 text-right">LKR {c.sale_amount.toFixed(2)}</td>
-                                  <td className="px-4 py-3 text-sm font-bold text-slate-900 text-right">LKR {c.commission_amount.toFixed(2)}</td>
-                                  <td className="px-4 py-3 text-sm text-right">
-                                    <button
-                                      onClick={() => handleViewInvoice(c.sale_id)}
-                                      disabled={loadingInvoice}
-                                      className="p-1.5 hover:bg-slate-100 rounded-lg transition text-slate-600 hover:text-slate-900"
-                                      title="View Invoice"
-                                    >
-                                      {loadingInvoice ? (
-                                        <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
-                                      ) : (
-                                        <Eye className="w-4 h-4" />
-                                      )}
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                        {(() => {
+                          const pending = commissions.filter(c => c.status === 'pending');
+                          const selected = pending.filter(c => selectedCommissionIds.has(c.id));
+                          return (
+                            <>
+                              <div className="flex justify-between items-center mb-4">
+                                <h4 className="font-semibold text-slate-900">Total Pending: LKR {pending.reduce((sum, c) => sum + c.commission_amount, 0).toFixed(2)}</h4>
+                                <div className="flex flex-wrap gap-2 mb-4">
+                                  <button
+                                    onClick={() => handlePayout(selected)}
+                                    disabled={selected.length === 0}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <DollarSign className="w-4 h-4" />
+                                    Payout Selected {selected.length > 0 ? `(${selected.length})` : ''}
+                                  </button>
+                                  <button
+                                    onClick={() => handlePayout(pending)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition font-medium border border-slate-200"
+                                  >
+                                    <DollarSign className="w-4 h-4 text-green-600" />
+                                    Payout All Pending
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                <table className="w-full">
+                                  <thead className="bg-slate-50">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left w-10">
+                                        <input
+                                          type="checkbox"
+                                          checked={selected.length === pending.length}
+                                          onChange={() => toggleSelectAllPending(pending)}
+                                          className="rounded border-slate-300"
+                                          title="Select all pending"
+                                        />
+                                      </th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Date</th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Sale #</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Sale Amount</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Commission</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-200 text-left">
+                                    {pending.map((c) => (
+                                      <tr key={c.id} className={selectedCommissionIds.has(c.id) ? 'bg-slate-50' : ''}>
+                                        <td className="px-4 py-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedCommissionIds.has(c.id)}
+                                            onChange={() => toggleCommissionSelected(c.id)}
+                                            className="rounded border-slate-300"
+                                          />
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-600 text-left">{new Date(c.created_at).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3 text-sm font-medium text-slate-900 text-left">{c.sale?.sale_number}</td>
+                                        <td className="px-4 py-3 text-sm text-slate-600 text-right">LKR {c.sale_amount.toFixed(2)}</td>
+                                        <td className="px-4 py-3 text-sm font-bold text-slate-900 text-right">LKR {c.commission_amount.toFixed(2)}</td>
+                                        <td className="px-4 py-3 text-sm text-right">
+                                          <button
+                                            onClick={() => handleViewInvoice(c.sale_id)}
+                                            disabled={loadingInvoice}
+                                            className="p-1.5 hover:bg-slate-100 rounded-lg transition text-slate-600 hover:text-slate-900"
+                                            title="View Invoice"
+                                          >
+                                            {loadingInvoice ? (
+                                              <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                              <Eye className="w-4 h-4" />
+                                            )}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
