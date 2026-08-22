@@ -263,24 +263,6 @@ export class SaleRepository extends BaseRepository<Sale> {
     }
 
     /**
-     * Find sale by sale number with items
-     */
-    async findBySaleNumber(saleNumber: string): Promise<SaleWithItems | null> {
-        const sale = await this.adapter.query<Sale>('sales', {
-            where: [{ field: 'sale_number', operator: '=', value: saleNumber }]
-        }).then(res => res[0] || null);
-
-        if (!sale) return null;
-
-        const items = await this.findItemsWithDetails(sale.id);
-
-        return {
-            ...sale,
-            items
-        };
-    }
-
-    /**
      * Find items with product and batch details for a sale
      */
     async findItemsWithDetails(saleId: string): Promise<SaleItem[]> {

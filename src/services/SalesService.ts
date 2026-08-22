@@ -689,19 +689,6 @@ export class SalesService {
     }
 
     /**
-     * Find sale by sale number
-     */
-    async findSaleByNumber(saleNumber: string): Promise<SaleWithItems | null> {
-        try {
-            logger.debug('Finding sale by number', { saleNumber });
-            return await this.saleRepo.findBySaleNumber(saleNumber);
-        } catch (error) {
-            logger.error('Failed to find sale by number', error as Error);
-            throw error;
-        }
-    }
-
-    /**
      * Generate unique sale number
      */
     private async generateSaleNumber(): Promise<string> {
@@ -712,36 +699,6 @@ export class SalesService {
         const timestamp = Date.now().toString().slice(-6);
 
         return `SALE-${year}${month}${day}-${timestamp}`;
-    }
-
-    /**
-     * Add a custom commission for a sale
-     */
-    async addCustomCommission(data: {
-        referral_agent_id: string;
-        sale_id: string;
-        commission_amount: number;
-        sale_amount: number;
-    }) {
-        try {
-            logger.info('Adding custom commission', data);
-
-            // Calculate a temporary rate for display/reference
-            const commissionRate = (data.commission_amount / data.sale_amount) * 100;
-
-            await this.saleRepo.createCommission({
-                referral_agent_id: data.referral_agent_id,
-                sale_id: data.sale_id,
-                commission_amount: data.commission_amount,
-                commission_rate: Math.round(commissionRate * 100) / 100,
-                sale_amount: data.sale_amount,
-            });
-
-            logger.info('Custom commission added successfully');
-        } catch (error) {
-            logger.error('Failed to add custom commission', error as Error);
-            throw error;
-        }
     }
 
     /**
