@@ -693,7 +693,7 @@ export function SalesHistory() {
                 isOpen={showCommissionModal}
                 onClose={() => setShowCommissionModal(false)}
                 title={commissionSale ? `Referral Commission: ${commissionSale.sale_number}` : 'Referral Commission'}
-                size="2xl"
+                size="3xl"
             >
                 {commissionSale && (
                     <div className="p-4 md:p-6 text-left">
@@ -730,6 +730,9 @@ export function SalesHistory() {
                                         <thead className="bg-slate-50 border-b border-slate-200">
                                             <tr>
                                                 <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Item</th>
+                                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Qty</th>
+                                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Selling Price</th>
+                                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Cost Price</th>
                                                 <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Rate %</th>
                                                 <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount (LKR)</th>
                                             </tr>
@@ -739,6 +742,15 @@ export function SalesHistory() {
                                                 <tr key={item.id}>
                                                     <td className="px-4 py-2 text-sm text-slate-900 text-left">
                                                         {item.is_manual ? (item.manual_description || 'Manual Item') : (item.product?.name || 'Unknown Item')}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-sm text-slate-600 text-right">
+                                                        {item.quantity}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-sm text-slate-600 text-right">
+                                                        LKR {item.unit_price.toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-sm text-slate-600 text-right">
+                                                        LKR {item.cost_price.toFixed(2)}
                                                     </td>
                                                     <td className="px-4 py-2 text-right">
                                                         <input
@@ -767,7 +779,7 @@ export function SalesHistory() {
                                         </tbody>
                                         <tfoot className="bg-slate-50 font-bold">
                                             <tr>
-                                                <td className="px-4 py-2 text-right text-slate-900">Total Commission:</td>
+                                                <td colSpan={4} className="px-4 py-2 text-right text-slate-900">Total Commission:</td>
                                                 <td></td>
                                                 <td className="px-4 py-2 text-right text-slate-900">
                                                     LKR {Object.values(itemCommissions).reduce((sum, v) => sum + (parseFloat(v.amount) || 0), 0).toFixed(2)}
