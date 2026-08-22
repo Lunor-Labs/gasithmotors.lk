@@ -57,11 +57,28 @@ export function Reports() {
         });
       });
 
-      setSalesReport({
-        total_sales: salesData?.length || 0,
-        total_revenue: totalRevenue,
-        total_profit: totalProfit,
-        average_order_value: salesData?.length ? totalRevenue / salesData.length : 0,
+      // Approved returns in this period reduce both revenue and profit
+      // (the margin on returned items is no longer realized, on top of the stock already being restored).
+      const { data: returnsData, error: returnsError } = await supabase
+        .from('returns')
+        .select('return_items(quantity, unit_price, subtotal, sale_items(cost_price))')
+        .eq('status', 'approved')
+        .gte('return_date', `${dateRange.start}T00:00:00`)
+        .lte('return_date', `${dateRange.end}T23:59:59`);
+
+      if (returnsError) throw returnsError;
+
+      let totalReturnRevenue = 0;
+      let totalReturnProfitImpact = 0;
+
+      returnsData?.forEach((ret: any) => {
+        (ret.return_items as any[])?.forEach((item) => {
+          totalReturnRevenue += Number(item.subtotal);
+          const costPrice = item.sale_items?.cost_price;
+          const unitPrice = Number(item.unit_price);
+          const margin = costPrice != null ? unitPrice - Number(costPrice) : 0;
+          totalReturnProfitImpact += margin * Number(item.quantity);
+        });
       });
 
       const { data: commissionsData, error: commissionsError } = await supabase
@@ -71,6 +88,22 @@ export function Reports() {
         .lte('created_at', `${dateRange.end}T23:59:59`);
 
       if (commissionsError) throw commissionsError;
+
+      // Paid commissions are a realized cost and reduce profit; pending ones don't yet.
+      const totalPaidCommission = (commissionsData || []).reduce(
+        (sum, comm: any) => sum + (comm.status === 'paid' ? Number(comm.commission_amount) : 0),
+        0
+      );
+
+      const netRevenue = totalRevenue - totalReturnRevenue;
+      const netProfit = totalProfit - totalReturnProfitImpact - totalPaidCommission;
+
+      setSalesReport({
+        total_sales: salesData?.length || 0,
+        total_revenue: netRevenue,
+        total_profit: netProfit,
+        average_order_value: salesData?.length ? netRevenue / salesData.length : 0,
+      });
 
       const commissionMap = new Map<string, CommissionReport>();
 
@@ -160,6 +193,7 @@ export function Reports() {
               <p className="text-3xl font-bold text-slate-900 mt-2">
                 LKR {salesReport.total_revenue.toFixed(2)}
               </p>
+              <p className="text-xs text-slate-400 mt-1">net of approved returns</p>
             </div>
             <div className="bg-green-500 p-3 rounded-xl">
               <DollarSign className="w-6 h-6 text-white" />
@@ -174,6 +208,7 @@ export function Reports() {
               <p className="text-3xl font-bold text-slate-900 mt-2">
                 LKR {salesReport.total_profit.toFixed(2)}
               </p>
+              <p className="text-xs text-slate-400 mt-1">after paid commissions &amp; returns</p>
             </div>
             <div className="bg-emerald-500 p-3 rounded-xl">
               <TrendingUp className="w-6 h-6 text-white" />
